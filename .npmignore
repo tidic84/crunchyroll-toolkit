@@ -1,0 +1,40 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Config files
+tsconfig.json
+jest.config.js
+.eslintrc*
+.prettierrc*
+
+# Test files
+**/*.test.*
+**/*.spec.*
+__tests__/
+coverage/
+
+# Development files
+examples/
+docs/
+.vscode/
+.idea/
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# Package files
+yarn.lock
+package-lock.json
+
+# Build files
+*.log
+.DS_Store
+node_modules/
+
+# Other
+*.md
+!README.md 

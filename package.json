@@ -1,0 +1,53 @@
+{
+  "name": "crunchyroll-toolkit",
+  "version": "1.0.0",
+  "description": "Toolkit Node.js complet pour extraire données d'animés, métadonnées et thumbnails depuis Crunchyroll avec techniques anti-détection 2024/2025",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "crunchyroll",
+    "anime",
+    "scraper",
+    "api",
+    "toolkit",
+    "thumbnails",
+    "episodes",
+    "web-scraping",
+    "anti-detection",
+    "playwright",
+    "metadata",
+    "2025"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.40.1",
+    "axios": "^1.6.2",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "@types/jest": "^29.5.11",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1"
+  },
+  "files": [
+    "lib/**/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tidic84/crunchyroll-toolkit"
+  },
+  "bugs": {
+    "url": "https://github.com/tidic84/crunchyroll-toolkit/issues"
+  },
+  "homepage": "https://github.com/tidic84/crunchyroll-toolkit#readme"
+} 
