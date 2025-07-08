@@ -1,29 +1,40 @@
-# Crunchyroll Scraper 🎌
+# Crunchyroll API Toolkit 🎌
 
-Un package Node.js puissant pour scraper les informations d'animés et les thumbnails d'épisodes depuis Crunchyroll avec des techniques avancées anti-détection **2024/2025**.
+Toolkit Node.js complet pour extraire données d'animés, métadonnées et thumbnails depuis Crunchyroll avec techniques anti-détection **2024/2025**.
 
 ## 🚀 Installation
 
 ```bash
-npm install crunchyroll-scraper
+npm install crunchyroll-api-toolkit
 ```
 
 ou avec Yarn :
 
 ```bash
-yarn add crunchyroll-scraper
+yarn add crunchyroll-api-toolkit
 ```
 
-## ⚠️ Protections Anti-Bot et Solutions
+## ⚠️ État Actuel & Protections Anti-Bot (Janvier 2025)
 
-**Crunchyroll utilise des protections Cloudflare très strictes.** Ce package propose **4 types de scrapers** :
+**🚨 IMPORTANT** : Crunchyroll a renforcé ses protections avec **Cloudflare Turnstile** en 2024/2025, rendant le scraping automatisé très difficile.
 
-1. **🚀 Scraper Avancé** (`createCrunchyrollScraper`) : **NOUVEAU !** Techniques 2024/2025 pour contourner Cloudflare
-2. **🛡️ Scraper Robuste** (`createRobustCrunchyrollScraper`) : Anti-détection avec mode headless
-3. **📜 Scraper Legacy** (`createLegacyCrunchyrollScraper`) : Version basique pour tests
-4. **🎭 Scraper Demo** (`createDemoCrunchyrollScraper`) : Données d'exemple pour développement
+### 📊 Scrapers Disponibles & Leur Efficacité
 
-**Le scraper avancé intègre** : masquage WebDriver, simulation comportementale humaine, headers réalistes, techniques anti-empreinte digitale, et navigation furtive.
+1. **🚀 Scraper Avancé** (`createCrunchyrollScraper`) : Anti-détection 2024/2025 | Efficacité ~40-60%
+2. **🌐 Scraper Réseau** (`createNetworkCrunchyrollScraper`) : Interception API | Bloqué par Cloudflare  
+3. **🛡️ Scraper Robuste** (`createRobustCrunchyrollScraper`) : Anti-détection classique | Efficacité ~20-40%
+4. **📜 Scraper Legacy** (`createLegacyCrunchyrollScraper`) : Version basique | Obsolète
+5. **🎭 Scraper Demo** (`createDemoCrunchyrollScraper`) : Données d'exemple | 100% fiable
+
+### ⚠️ Limitations Actuelles
+- **Cloudflare Turnstile** bloque la plupart des tentatives automatisées
+- Les résultats peuvent être des données génériques de la page d'accueil
+- Des délais très longs sont nécessaires pour éviter la détection
+
+### 💡 Solutions Recommandées
+1. **API Officielle Crunchyroll** (Légale et fiable)
+2. **Scraper Demo** pour développement et tests
+3. **Cache local** avec mise à jour manuelle
 
 ## 📋 Prérequis
 
@@ -42,10 +53,10 @@ npx playwright install chromium
 
 ## 💡 Utilisation
 
-### 🚀 Scraper Avancé (RECOMMANDÉ - Nouvelles techniques 2024/2025)
+### 🚀 Scraper Avancé (Anti-détection 2024/2025)
 
 ```javascript
-const { createCrunchyrollScraper } = require('crunchyroll-scraper');
+const { createCrunchyrollScraper } = require('crunchyroll-api-toolkit');
 
 async function scrapingAvance() {
   const scraper = await createCrunchyrollScraper({
@@ -80,23 +91,45 @@ async function scrapingAvance() {
 ### 🛡️ Autres Options de Scrapers
 
 ```javascript
+// Scraper réseau (interception API - expérimental)
+const { createNetworkCrunchyrollScraper } = require('crunchyroll-api-toolkit');
+const networkScraper = await createNetworkCrunchyrollScraper();
+
 // Scraper robuste (headless avec anti-détection)
-const { createRobustCrunchyrollScraper } = require('crunchyroll-scraper');
+const { createRobustCrunchyrollScraper } = require('crunchyroll-api-toolkit');
 const robustScraper = await createRobustCrunchyrollScraper();
 
 // Scraper legacy (basique)
-const { createLegacyCrunchyrollScraper } = require('crunchyroll-scraper');
+const { createLegacyCrunchyrollScraper } = require('crunchyroll-api-toolkit');
 const legacyScraper = await createLegacyCrunchyrollScraper();
 
-// Scraper demo (données d'exemple)
-const { createDemoCrunchyrollScraper } = require('crunchyroll-scraper');
+// Scraper demo (données d'exemple - RECOMMANDÉ pour développement)
+const { createDemoCrunchyrollScraper } = require('crunchyroll-api-toolkit');
 const demoScraper = await createDemoCrunchyrollScraper();
+```
+
+### 🎭 Scraper Demo (RECOMMANDÉ pour développement)
+
+```javascript
+const { createDemoCrunchyrollScraper } = require('crunchyroll-api-toolkit');
+
+async function exempleDemo() {
+  const demoScraper = await createDemoCrunchyrollScraper();
+  
+  // Données d'exemple toujours disponibles
+  const searchResult = await demoScraper.searchAnime('One Piece');
+  console.log(`Trouvé ${searchResult.data.length} animés`);
+  
+  // Pas de problème de détection ou de timeout
+  const episodes = await demoScraper.getEpisodes(searchResult.data[0].url);
+  console.log(`${episodes.data.length} épisodes avec thumbnails`);
+}
 ```
 
 ### Utilisation avancée avec TypeScript
 
 ```typescript
-import { CrunchyrollScraper, AnimeSeries } from 'crunchyroll-scraper';
+import { CrunchyrollScraper, AnimeSeries } from 'crunchyroll-api-toolkit';
 
 const scraper = new CrunchyrollScraper({
   headless: false,  // Afficher le navigateur
@@ -267,25 +300,79 @@ async function exportAnimeData(searchQuery) {
 }
 ```
 
-## ⚠️ Limitations et considérations
+## ⚠️ Limitations Actuelles (2025)
 
-1. **Rate Limiting** : Crunchyroll peut limiter le nombre de requêtes. Utilisez des délais entre les requêtes.
+### 🚫 Problèmes Identifiés
 
-2. **Changements de structure** : Le site peut changer sa structure HTML. Le package sera mis à jour régulièrement.
+1. **Cloudflare Turnstile** : Crunchyroll utilise des challenges anti-bot avancés qui bloquent la plupart des tentatives automatisées
+2. **Contenu Dynamique** : Les vrais résultats de recherche sont chargés par JavaScript après validation
+3. **Détection Comportementale** : Cloudflare analyse les patterns de navigation pour détecter les bots
+4. **Timeouts Fréquents** : Les scrapers peuvent rester bloqués sur les challenges de sécurité
 
-3. **Respect des CGU** : Assurez-vous de respecter les conditions d'utilisation de Crunchyroll.
+### 📊 Taux de Réussite par Scraper
 
-4. **Performance** : Le scraping peut être lent pour les grandes séries. Utilisez le mode headless pour de meilleures performances.
+| Scraper | Efficacité | Cas d'usage recommandé |
+|---------|------------|------------------------|
+| **Demo** | 100% | Développement, tests, prototypage |
+| **Avancé** | 40-60% | Production avec patience et délais |
+| **Réseau** | 0% | Bloqué par Cloudflare (expérimental) |
+| **Robuste** | 20-40% | Tests avec protections moyennes |
+| **Legacy** | 0-10% | Obsolète |
+
+### 💡 Alternatives Recommandées
+
+1. **🎭 Scraper Demo** : Données d'exemple fiables pour développement
+2. **🔑 API Officielle** : Solution légale et stable (si disponible)  
+3. **💾 Cache Local** : Base de données manuelle d'animés populaires
+4. **⏰ Scraping Lent** : Intervalles de plusieurs minutes entre requêtes
+
+### 🛡️ Considérations Supplémentaires
+
+- **Rate Limiting** : Délais obligatoires de 2-5 minutes entre requêtes
+- **Mode Non-Headless** : Nécessaire pour éviter certaines détections
+- **Proxies** : Recommandés pour éviter les blocages IP
+- **Respect CGU** : Le scraping peut violer les conditions d'utilisation
+
+## 📖 Documentation Avancée
+
+- **[SITUATION-ACTUELLE-2025.md](SITUATION-ACTUELLE-2025.md)** : Analyse détaillée des protections Cloudflare
+- **[TECHNIQUES-ANTI-DETECTION.md](TECHNIQUES-ANTI-DETECTION.md)** : Guide des méthodes 2024/2025
+- **[SOLUTIONS.md](SOLUTIONS.md)** : Comparatif des différents scrapers
+- **[SUCCES-2025.md](SUCCES-2025.md)** : Résumé des réussites techniques
+- **[GUIDE-NOMMAGE.md](GUIDE-NOMMAGE.md)** : Guide de nommage du projet
+
+## 🚀 Scripts d'Exemple
+
+```bash
+# Test du scraper avancé
+node examples/test-advanced.js
+
+# Test du scraper réseau
+node examples/test-network-scraper.js
+
+# Test de recherche avec diagnostic
+node examples/test-search-fixed.js
+
+# Utilisation complète
+node examples/test-complet.js
+```
 
 ## 🤝 Contribution
 
 Les contributions sont les bienvenues ! N'hésitez pas à :
 
-1. Fork le projet
+1. Fork le projet sur [GitHub](https://github.com/tidic84/crunchyroll-toolkit)
 2. Créer une branche (`git checkout -b feature/AmazingFeature`)
 3. Commit vos changements (`git commit -m 'Add some AmazingFeature'`)
 4. Push sur la branche (`git push origin feature/AmazingFeature`)
 5. Ouvrir une Pull Request
+
+### 🎯 Contributions Prioritaires
+
+- Amélioration des techniques anti-détection
+- Support d'autres sites d'anime
+- Optimisation des performances
+- Tests avec différents environnements
 
 ## 📄 Licence
 
@@ -299,8 +386,29 @@ Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de 
 
 ## 📞 Support
 
-Pour toute question ou problème, ouvrez une issue sur GitHub.
+Pour toute question ou problème :
+- 🐛 **Issues** : [GitHub Issues](https://github.com/tidic84/crunchyroll-toolkit/issues)
+- 📧 **Email** : Contactez le maintainer du projet
+- 📖 **Documentation** : Consultez les fichiers MD dans le dépôt
+
+## 🎯 Roadmap 2025
+
+- [ ] Amélioration contournement Cloudflare Turnstile
+- [ ] Support API officielle Crunchyroll  
+- [ ] Extension vers Funimation/autres plateformes
+- [ ] Interface web pour utilisation simplifiée
+- [ ] Cache intelligent avec auto-refresh
+- [ ] Support mobile et responsive
 
 ---
 
-**Note** : Ce package est un outil éducatif. Utilisez-le de manière responsable et respectez les droits d'auteur. 
+## ⚖️ Avertissement Légal
+
+**Ce toolkit est destiné à un usage éducatif et de recherche uniquement.**
+
+- ✅ Respectez les conditions d'utilisation de Crunchyroll
+- ✅ N'utilisez pas à des fins commerciales sans autorisation  
+- ✅ Respectez les droits d'auteur et la propriété intellectuelle
+- ⚠️ Le scraping peut violer les ToS - utilisez à vos risques
+
+**Utilisez de manière responsable et éthique.** 
