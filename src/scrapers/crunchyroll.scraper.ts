@@ -1098,21 +1098,36 @@ export class CrunchyrollScraper {
    * Extraction optimisée du thumbnail depuis les données API
    */
   private extractThumbnailFromItem(item: any): string {
-    // Sources possibles pour le thumbnail
+    // Sources possibles pour le thumbnail avec la vraie structure API
     const sources = [
+      // Format Crunchyroll 2025 (double array)
+      item.images?.thumbnail?.[0]?.[0]?.source,  // Premier thumbnail de la première liste
+      item.images?.thumbnail?.[0]?.[1]?.source,  // Deuxième résolution
+      item.images?.thumbnail?.[0]?.[2]?.source,  // Troisième résolution
+      // Format alternatif (simple array)
       item.images?.thumbnail?.[0]?.source,
-      item.images?.thumbnail?.[1]?.source, // Différentes résolutions
+      item.images?.thumbnail?.[1]?.source,
+      // Autres formats d'images
+      item.images?.poster_tall?.[0]?.[0]?.source,
       item.images?.poster_tall?.[0]?.source,
+      item.images?.poster_wide?.[0]?.[0]?.source,
       item.images?.poster_wide?.[0]?.source,
+      // Champs directs
       item.thumbnail_image,
       item.poster_image,
       item.image,
-      // Format alternatif
       item.promo_image,
       item.screenshot_image
     ];
     
-    return sources.find(source => source && source.includes('http')) || '';
+    const thumbnail = sources.find(source => source && source.includes('http')) || '';
+    
+    // Log pour debug
+    if (thumbnail) {
+      console.log(`🖼️  Thumbnail extrait: ${thumbnail.substring(0, 80)}...`);
+    }
+    
+    return thumbnail;
   }
 
   async close(): Promise<void> {
