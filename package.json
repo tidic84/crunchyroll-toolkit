@@ -40,7 +40,12 @@
     "typescript": "^5.3.3"
   },
   "files": [
-    "lib/**/*"
+    "lib/index.js",
+    "lib/index.d.ts",
+    "lib/scrapers/crunchyroll.scraper.js",
+    "lib/scrapers/crunchyroll.scraper.d.ts",
+    "lib/types/**/*",
+    "lib/utils/**/*"
   ],
   "repository": {
     "type": "git",

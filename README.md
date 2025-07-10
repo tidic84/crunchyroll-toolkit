@@ -4,11 +4,12 @@ Un scraper avancé pour récupérer les informations d'animés depuis Crunchyrol
 
 ## 🚀 Fonctionnalités
 
-- **Recherche d'animés** : Recherche par titre avec résultats pertinents
+- **Recherche d'animés** : Recherche par titre avec résultats pertinents via API interceptée
 - **Détails complets** : Récupération des métadonnées (titre, description, thumbnail)
-- **Épisodes** : Extraction des épisodes avec leurs thumbnails
+- **Multi-saisons** : Détection automatique et extraction des épisodes de toutes les saisons
+- **Thumbnails HD** : Récupération des thumbnails haute qualité pour tous les épisodes
 - **Anti-détection** : Contournement intelligent de Cloudflare et des protections anti-bot
-- **API hybride** : Utilise les APIs Crunchyroll interceptées pour des données précises
+- **API hybride** : Utilise les APIs Crunchyroll interceptées pour des données précises et complètes
 
 ## 📦 Installation
 
@@ -97,10 +98,12 @@ Le scraper utilise une approche hybride qui :
 
 ## 🎯 Cas d'usage testés
 
-- ✅ **Mynoghra** : "Apocalypse Bringer Mynoghra: World Conquest Starts with the Civilization of Ruin"
-- ✅ Contournement Cloudflare Turnstile
-- ✅ Récupération de thumbnails haute qualité
-- ✅ Extraction via APIs interceptées
+- ✅ **One Piece** : Recherche, détails et extraction multi-saisons (3 saisons détectées automatiquement)
+- ✅ **Mynoghra** : "Apocalypse Bringer Mynoghra" trouvé via recherche spécifique
+- ✅ **Saisons multiples** : Détection automatique et navigation entre saisons
+- ✅ **Thumbnails HD** : 100% des épisodes avec thumbnails haute qualité
+- ✅ **APIs interceptées** : Extraction complète via APIs Crunchyroll en temps réel
+- ✅ **Contournement Cloudflare** : Navigation intelligente et anti-détection
 
 ## 📝 Licence
 
