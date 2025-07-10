@@ -870,6 +870,11 @@ export class CrunchyrollScraper {
           ];
           
           const descriptionSources = [
+            // Sélecteur spécifique Crunchyroll 2025
+            document.querySelector('.erc-series-description p.text--gq6o-.text--is-l--iccTo')?.textContent?.trim(),
+            document.querySelector('.erc-series-description p')?.textContent?.trim(),
+            document.querySelector('.details-section-wrapper .erc-series-description p')?.textContent?.trim(),
+            // Sélecteurs génériques de fallback
             document.querySelector('[data-testid*="description"] p')?.textContent?.trim(),
             document.querySelector('[class*="description"] p')?.textContent?.trim(),
             document.querySelector('[class*="synopsis"] p')?.textContent?.trim(),
