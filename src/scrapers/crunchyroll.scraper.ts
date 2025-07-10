@@ -315,8 +315,8 @@ export class CrunchyrollScraper {
       
       console.log(`🎯 Résultats filtrés: ${animes.length} série(s), meilleure pertinence: ${bestRelevance.toFixed(2)}`);
       
-      // Si aucun résultat vraiment pertinent (< 0.3), essayer la recherche spécifique
-      if (animes.length === 0 || bestRelevance < 0.3) {
+      // Si aucun résultat vraiment pertinent (< 0.15), essayer la recherche spécifique
+      if (animes.length === 0 || bestRelevance < 0.15) {
         console.log('⚠️ Résultats non pertinents, recherche spécifique...');
         const specificResults = await this.searchSpecificAnime(query, page);
         
@@ -343,7 +343,7 @@ export class CrunchyrollScraper {
   }
 
   /**
-   * Calcule la pertinence d'un titre par rapport à la requête
+   * Calcule la pertinence d'un titre par rapport à la requête (algorithme amélioré)
    */
   private calculateRelevance(title: string, query: string): number {
     const titleLower = title.toLowerCase();
@@ -352,21 +352,43 @@ export class CrunchyrollScraper {
     // Match exact = 100%
     if (titleLower === queryLower) return 1.0;
     
-    // Contient tous les mots = 80%
-    const queryWords = queryLower.split(/\s+/);
-    const titleWords = titleLower.split(/\s+/);
-    const matchingWords = queryWords.filter(word => 
-      titleWords.some(titleWord => titleWord.includes(word) || word.includes(titleWord))
-    );
+    // Contient la requête complète = 90%
+    if (titleLower.includes(queryLower)) return 0.9;
     
-    if (matchingWords.length === queryWords.length) return 0.8;
+    // Analyse par mots (en ignorant les mots communs)
+    const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'le', 'la', 'les', 'un', 'une', 'et', 'ou', 'de', 'du', 'des', 'en', 'dans', 'avec', 'pour', 'sur'];
     
-    // Contient le titre complet = 70%
-    if (titleLower.includes(queryLower)) return 0.7;
+    const queryWords = queryLower.split(/\s+/).filter(word => word.length > 2 && !stopWords.includes(word));
+    const titleWords = titleLower.split(/\s+/).filter(word => word.length > 2 && !stopWords.includes(word));
     
-    // Contient des mots clés = proportionnel
-    const ratio = matchingWords.length / queryWords.length;
-    return ratio * 0.6;
+    if (queryWords.length === 0) return 0.1;
+    
+    // Comptage des correspondances (exact + partiel)
+    let exactMatches = 0;
+    let partialMatches = 0;
+    
+    for (const queryWord of queryWords) {
+      if (titleWords.includes(queryWord)) {
+        exactMatches++;
+      } else if (titleWords.some(titleWord => 
+        titleWord.includes(queryWord) || queryWord.includes(titleWord)
+      )) {
+        partialMatches++;
+      }
+    }
+    
+    // Calcul de score plus permissif
+    const exactRatio = exactMatches / queryWords.length;
+    const partialRatio = partialMatches / queryWords.length;
+    const totalRatio = exactRatio + (partialRatio * 0.5);
+    
+    // Score final plus généreux
+    if (totalRatio >= 0.8) return 0.8;  // Très bonne correspondance
+    if (totalRatio >= 0.6) return 0.6;  // Bonne correspondance
+    if (totalRatio >= 0.4) return 0.4;  // Correspondance acceptable
+    if (totalRatio >= 0.2) return 0.2;  // Correspondance faible mais valide
+    
+    return totalRatio;
   }
 
   /**
@@ -375,13 +397,24 @@ export class CrunchyrollScraper {
   private async extractFromInterceptedAPIs(query: string): Promise<any[]> {
     console.log('🎯 Extraction depuis APIs interceptées...');
     
-    // Chercher l'API de recherche
-    const searchApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
-      url.includes('/discover/search') && url.includes(encodeURIComponent(query))
-    );
+    // Chercher l'API de recherche avec différents formats d'encodage
+    const searchApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => {
+      if (!url.includes('/discover/search')) return false;
+      
+      // Tester différents formats d'encodage
+      const encodedFormats = [
+        encodeURIComponent(query),           // "One%20Piece"
+        query.replace(/\s+/g, '+'),          // "One+Piece"
+        query.replace(/\s+/g, '%20'),        // "One%20Piece"
+        query                                // "One Piece"
+      ];
+      
+      return encodedFormats.some(format => url.includes(format));
+    });
     
     if (!searchApiUrl) {
       console.log('⚠️ Aucune API de recherche interceptée');
+      console.log('📋 APIs disponibles:', Array.from(this.apiResponses.keys()).filter(url => url.includes('/discover/search')));
       return [];
     }
     
