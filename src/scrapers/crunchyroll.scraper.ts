@@ -1036,17 +1036,46 @@ export class CrunchyrollScraper {
       console.log(`\n🎭 Traitement Saison ${season.number}: "${season.title}"`);
       
       try {
-        // Naviguer vers cette saison si ce n'est pas la première
+        // Nettoyer le cache d'APIs avant chaque saison (sauf la première)
         if (i > 0) {
+          console.log(`🧹 Nettoyage du cache APIs avant saison ${season.number}...`);
+          
+          // Garder seulement les APIs de saisons (pas d'épisodes)
+          const seasonsApis = new Map();
+          for (const [url, data] of this.apiResponses.entries()) {
+            if (url.includes('/seasons') && !url.includes('/episodes')) {
+              seasonsApis.set(url, data);
+            }
+          }
+          this.apiResponses.clear();
+          for (const [url, data] of seasonsApis) {
+            this.apiResponses.set(url, data);
+          }
+          
+          // Naviguer vers cette saison
           await this.switchToSeason(page, season, i);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
         
         // Extraire les épisodes de cette saison
         const seasonEpisodes = await this.extractEpisodesFromCurrentSeason(page, animeId, season.number, season.id);
         
         console.log(`📺 Saison ${season.number}: ${seasonEpisodes.length} épisode(s) trouvé(s)`);
-        allEpisodes = allEpisodes.concat(seasonEpisodes);
+        
+        // Valider que les épisodes ne sont pas des doublons d'une autre saison
+        if (seasonEpisodes.length > 0) {
+          const uniqueEpisodes = seasonEpisodes.filter(newEp => 
+            !allEpisodes.some(existingEp => 
+              existingEp.title === newEp.title && existingEp.episodeNumber === newEp.episodeNumber
+            )
+          );
+          
+          if (uniqueEpisodes.length !== seasonEpisodes.length) {
+            console.log(`⚠️ ${seasonEpisodes.length - uniqueEpisodes.length} doublons détectés et supprimés`);
+          }
+          
+          allEpisodes = allEpisodes.concat(uniqueEpisodes);
+        }
         
       } catch (error) {
         console.log(`⚠️ Erreur saison ${season.number}:`, (error as Error).message);
@@ -1436,21 +1465,39 @@ export class CrunchyrollScraper {
       }
     }
     
-    // STRATÉGIE 2: Si pas d'API spécifique, prendre la plus récente API d'épisodes
+    // STRATÉGIE 2: Si pas d'API spécifique, NE PAS utiliser d'anciennes APIs
     if (!episodeApiUrl || !apiData) {
-      console.log(`🔍 Recherche API d'épisodes générique pour saison ${seasonNumber}...`);
+      console.log(`🔍 Pas d'API spécifique trouvée pour saison ${seasonNumber}`);
+      console.log(`⚠️ Éviter de réutiliser d'anciennes APIs pour éviter duplication`);
       
-      // Attendre un peu plus pour que de nouvelles APIs soient interceptées
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const allEpisodeUrls = Array.from(this.apiResponses.keys())
-        .filter((url: string) => url.includes('/episodes'))
-        .sort(); // Tri pour avoir la plus récente
-      
-      if (allEpisodeUrls.length > 0) {
-        episodeApiUrl = allEpisodeUrls[allEpisodeUrls.length - 1];
-        apiData = this.apiResponses.get(episodeApiUrl);
-        console.log(`✅ API générique trouvée: ${episodeApiUrl}`);
+      // Essayer un dernier déclenchement direct si on a l'ID
+      if (seasonId) {
+        console.log(`🔄 Dernier essai de déclenchement pour saison ${seasonId}...`);
+        
+        try {
+          // Force la navigation vers la saison spécifique pour déclencher les bonnes APIs
+          const currentUrl = page.url();
+          const baseUrl = currentUrl.split('/seasons/')[0] || currentUrl;
+          const targetUrl = `${baseUrl}/seasons/${seasonId}`;
+          
+          if (targetUrl !== currentUrl) {
+            console.log(`🎯 Navigation forcée vers: ${targetUrl}`);
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Re-chercher l'API après navigation
+            episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
+              url.includes(`/seasons/${seasonId}/episodes`)
+            );
+            
+            if (episodeApiUrl) {
+              apiData = this.apiResponses.get(episodeApiUrl);
+              console.log(`✅ API spécifique trouvée après navigation forcée!`);
+            }
+          }
+        } catch (e) {
+          console.log(`⚠️ Navigation forcée échouée: ${e}`);
+        }
       }
     }
     
