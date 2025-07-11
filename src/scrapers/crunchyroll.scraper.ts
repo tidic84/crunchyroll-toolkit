@@ -1046,12 +1046,45 @@ export class CrunchyrollScraper {
     
     let allEpisodes: Episode[] = [];
     
+    // STRATÉGIE AMÉLIORÉE: Pré-charger toutes les APIs depuis la page authentifiée
+    console.log('🚀 Pré-chargement APIs de toutes les saisons...');
+    for (const season of seasons) {
+      if (season.id) {
+        console.log(`🔄 Pré-déclenchement API saison ${season.number} (${season.id})`);
+        await page.evaluate((seasonId) => {
+          console.log(`📡 Déclenchement fetch pour ${seasonId}...`);
+          fetch(`/content/v2/cms/seasons/${seasonId}/episodes?locale=fr-FR`, {
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            }
+          }).then(response => {
+            console.log(`📡 Réponse ${seasonId}: Status ${response.status}`);
+            return response.json();
+          }).then(data => {
+            console.log(`📡 Données ${seasonId}: ${data?.data?.length || 0} épisodes`);
+          }).catch(error => {
+            console.log(`❌ Erreur ${seasonId}: ${error}`);
+          });
+        }, season.id);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    console.log('⏳ Attente chargement toutes les APIs...');
+    await new Promise(resolve => setTimeout(resolve, 6000));
+    
     // Étape 2: Pour chaque saison, extraire les épisodes
     for (let i = 0; i < seasons.length; i++) {
       const season = seasons[i];
       console.log(`\n🎭 Traitement Saison ${season.number}: "${season.title}"`);
       
       try {
+        // Plus besoin de navigation - extraction directe
+        console.log(`📺 Extraction directe depuis APIs pré-chargées`);
+        
+        if (false) {
         // Pour la saison 1, pas besoin de changement
         if (i === 0) {
           console.log(`📺 Traitement saison ${season.number} (première saison, pas de changement nécessaire)`);
@@ -1162,11 +1195,9 @@ export class CrunchyrollScraper {
           }
         }
         
-        // Attendre après tous les changements pour que les APIs se stabilisent
-        console.log(`⏳ Attente stabilisation APIs pour saison ${season.number}...`);
-        await new Promise(resolve => setTimeout(resolve, 8000));
+        } // Fin if(false) - ancienne logique désactivée
         
-        // Extraire les épisodes de cette saison
+        // Extraire les épisodes de cette saison directement depuis le cache
         const seasonEpisodes = await this.extractEpisodesFromCurrentSeason(page, animeId, season.number, season.id);
         
         console.log(`📺 Saison ${season.number}: ${seasonEpisodes.length} épisode(s) trouvé(s)`);
@@ -1319,16 +1350,28 @@ export class CrunchyrollScraper {
         let seasonNumber = i + 1; // Default basé sur l'index
         let title = item.title || item.slug_title || item.name || '';
         
-        // Méthodes pour extraire le numéro de saison
-        if (item.season_number) {
-          seasonNumber = parseInt(item.season_number);
-        } else if (item.season_sequence_number) {
+        // Méthodes pour extraire le numéro de saison (ORDRE CORRIGÉ)
+        // 1. Priorité: season_sequence_number (numéro relatif dans la série)
+        if (item.season_sequence_number && item.season_sequence_number <= 10) {
           seasonNumber = parseInt(item.season_sequence_number);
-        } else if (title) {
+        } 
+        // 2. Extraction depuis le titre (plus fiable que season_number global)
+        else if (title) {
           const match = title.match(/(?:Season|Saison|S)[\s]*(\d+)/i);
           if (match) {
             seasonNumber = parseInt(match[1]);
           }
+        }
+        // 3. Fallback: season_display_number si disponible
+        else if (item.season_display_number && item.season_display_number !== "") {
+          const displayNum = parseInt(item.season_display_number);
+          if (!isNaN(displayNum) && displayNum <= 10) {
+            seasonNumber = displayNum;
+          }
+        }
+        // 4. Dernier recours: season_number SEULEMENT si raisonnable (< 20)
+        else if (item.season_number && item.season_number < 20) {
+          seasonNumber = parseInt(item.season_number);
         }
         
         // Si pas de titre clair, générer depuis les métadonnées
@@ -1343,6 +1386,32 @@ export class CrunchyrollScraper {
         });
         
         console.log(`🎭 API Saison ${seasonNumber}: "${title}" | ID: ${item.id || item.guid || 'N/A'}`);
+      }
+      
+      // POST-TRAITEMENT: Normalisation des numéros de saisons
+      console.log('🔧 Normalisation des numéros de saisons...');
+      
+      // Si on a des numéros bizarres (> 50), les renormaliser en ordre séquentiel
+      const hasBigNumbers = seasons.some(s => s.number > 50);
+      if (hasBigNumbers) {
+        console.log('⚠️ Numéros de saisons anormaux détectés, renormalisation...');
+        
+        // Trier par sequence_number d'abord, puis par season_number
+        const sortedSeasons = [...seasons].sort((a, b) => {
+          const aSeq = seasonItems.find((item: any) => item.id === a.id)?.season_sequence_number || 999;
+          const bSeq = seasonItems.find((item: any) => item.id === b.id)?.season_sequence_number || 999;
+          
+          if (aSeq !== bSeq) return aSeq - bSeq;
+          return a.number - b.number;
+        });
+        
+        // Renombrer en 1, 2, 3...
+        for (let i = 0; i < sortedSeasons.length; i++) {
+          sortedSeasons[i].number = i + 1;
+          console.log(`🔄 Saison renormalisée: "${sortedSeasons[i].title}" -> Saison ${i + 1}`);
+        }
+        
+        return sortedSeasons;
       }
       
       return seasons.sort((a, b) => a.number - b.number);
