@@ -31,6 +31,24 @@ export class CrunchyrollScraper {
     this.browserManager = new BrowserManager(enhancedOptions);
   }
 
+  /**
+   * Extrait l'ID de série depuis l'URL Crunchyroll
+   * Ex: https://www.crunchyroll.com/series/GYQWNXPZY/fire-force -> GYQWNXPZY
+   */
+  private extractSeriesIdFromUrl(url: string): string {
+    const match = url.match(/\/series\/([A-Z0-9]+)/);
+    return match ? match[1] : ParserUtils.extractIdFromUrl(url);
+  }
+
+  /**
+   * Extrait le slug de série depuis l'URL Crunchyroll
+   * Ex: https://www.crunchyroll.com/series/GYQWNXPZY/fire-force -> fire-force
+   */
+  private extractSeriesSlugFromUrl(url: string): string {
+    const match = url.match(/\/series\/[A-Z0-9]+\/([^/?]+)/);
+    return match ? match[1] : '';
+  }
+
   async initialize(): Promise<void> {
     await this.browserManager.initialize();
     const page = await this.browserManager.getPage();
@@ -986,7 +1004,7 @@ export class CrunchyrollScraper {
     try {
       const page = await this.browserManager.getPage();
       const fullUrl = ParserUtils.normalizeUrl(animeUrl, this.baseUrl);
-      const animeId = ParserUtils.extractIdFromUrl(fullUrl);
+      const animeId = this.extractSeriesIdFromUrl(fullUrl);
       
       console.log(`📺 Enhanced Episodes: ${fullUrl}`);
       
@@ -1007,7 +1025,8 @@ export class CrunchyrollScraper {
           console.log('📺 Pas d\'onglet épisodes trouvé, recherche directe...');
         }
         
-        const episodes = await this.extractEpisodes(page, animeId);
+        const animeSlug = this.extractSeriesSlugFromUrl(fullUrl);
+        const episodes = await this.extractEpisodes(page, animeId, animeSlug);
 
         console.log(`✅ ${episodes.length} épisode(s) extrait(s) de la page`);
         return { success: true, data: episodes };
@@ -1037,7 +1056,7 @@ export class CrunchyrollScraper {
   /**
    * Extraction d'épisodes avec support multi-saisons
    */
-  private async extractEpisodes(page: Page, animeId: string): Promise<Episode[]> {
+  private async extractEpisodes(page: Page, animeId: string, animeSlug?: string): Promise<Episode[]> {
     console.log('📺 Extraction Enhanced des épisodes (multi-saisons)...');
     
     // Étape 1: Récupérer toutes les saisons disponibles
@@ -1046,34 +1065,8 @@ export class CrunchyrollScraper {
     
     let allEpisodes: Episode[] = [];
     
-    // STRATÉGIE AMÉLIORÉE: Pré-charger toutes les APIs depuis la page authentifiée
-    console.log('🚀 Pré-chargement APIs de toutes les saisons...');
-    for (const season of seasons) {
-      if (season.id) {
-        console.log(`🔄 Pré-déclenchement API saison ${season.number} (${season.id})`);
-        await page.evaluate((seasonId) => {
-          console.log(`📡 Déclenchement fetch pour ${seasonId}...`);
-          fetch(`/content/v2/cms/seasons/${seasonId}/episodes?locale=fr-FR`, {
-            credentials: 'include',
-            headers: {
-              'Accept': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            }
-          }).then(response => {
-            console.log(`📡 Réponse ${seasonId}: Status ${response.status}`);
-            return response.json();
-          }).then(data => {
-            console.log(`📡 Données ${seasonId}: ${data?.data?.length || 0} épisodes`);
-          }).catch(error => {
-            console.log(`❌ Erreur ${seasonId}: ${error}`);
-          });
-        }, season.id);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-    
-    console.log('⏳ Attente chargement toutes les APIs...');
-    await new Promise(resolve => setTimeout(resolve, 6000));
+    // SOLUTION SANS DROPDOWN: Navigation directe vers les pages de saisons
+    console.log('🎯 DÉCOUVERTE: Pas de dropdown sur page principale, navigation directe...');
     
     // Étape 2: Pour chaque saison, extraire les épisodes
     for (let i = 0; i < seasons.length; i++) {
@@ -1081,11 +1074,45 @@ export class CrunchyrollScraper {
       console.log(`\n🎭 Traitement Saison ${season.number}: "${season.title}"`);
       
       try {
-        // Plus besoin de navigation - extraction directe
-        console.log(`📺 Extraction directe depuis APIs pré-chargées`);
+        // Navigation directe vers la page de la saison
+        if (i === 0) {
+          console.log(`📺 Saison ${season.number} - page principale (pas de navigation)`);
+        } else {
+          console.log(`🎯 Navigation vers saison ${season.number} via bouton "Saison suivante"...`);
+          
+          try {
+            // Cliquer sur le bouton "Saison suivante" autant de fois que nécessaire
+            for (let clickCount = 1; clickCount < season.number; clickCount++) {
+              console.log(`🔄 Clic ${clickCount} sur "Saison suivante"...`);
+              
+              const nextSeasonClicked = await page.evaluate(() => {
+                const nextButton = document.querySelector('[data-t="next-season"]:not(.state-disabled)');
+                if (nextButton && !nextButton.classList.contains('state-disabled')) {
+                  (nextButton as HTMLElement).click();
+                  return true;
+                }
+                return false;
+              });
+              
+              if (nextSeasonClicked) {
+                console.log(`✅ Clic ${clickCount} réussi`);
+                // Attendre le chargement de la nouvelle saison
+                await new Promise(resolve => setTimeout(resolve, 5000));
+              } else {
+                console.log(`❌ Bouton "Saison suivante" non trouvé ou désactivé`);
+                break;
+              }
+            }
+            
+            console.log(`✅ Navigation vers saison ${season.number} terminée`);
+            
+          } catch (error) {
+            console.log(`⚠️ Navigation via boutons échouée: ${error}`);
+          }
+        }
         
         if (false) {
-        // Pour la saison 1, pas besoin de changement
+        // Ancienne logique de dropdown désactivée  
         if (i === 0) {
           console.log(`📺 Traitement saison ${season.number} (première saison, pas de changement nécessaire)`);
         } else {
@@ -1195,9 +1222,9 @@ export class CrunchyrollScraper {
           }
         }
         
-        } // Fin if(false) - ancienne logique désactivée
+        } // Fin if(false) - ancienne logique dropdown désactivée
         
-        // Extraire les épisodes de cette saison directement depuis le cache
+        // Extraire les épisodes de cette saison
         const seasonEpisodes = await this.extractEpisodesFromCurrentSeason(page, animeId, season.number, season.id);
         
         console.log(`📺 Saison ${season.number}: ${seasonEpisodes.length} épisode(s) trouvé(s)`);
@@ -1722,8 +1749,9 @@ export class CrunchyrollScraper {
         try {
           // Force la navigation vers la saison spécifique pour déclencher les bonnes APIs
           const currentUrl = page.url();
-          const baseUrl = currentUrl.split('/seasons/')[0] || currentUrl;
-          const targetUrl = `${baseUrl}/seasons/${seasonId}`;
+          // Nettoyer l'URL de base
+          const baseUrl = currentUrl.split('?')[0].split('/seasons/')[0];
+          const targetUrl = `${baseUrl}?season=${seasonId}`;
           
           if (targetUrl !== currentUrl) {
             console.log(`🎯 Navigation forcée vers: ${targetUrl}`);
