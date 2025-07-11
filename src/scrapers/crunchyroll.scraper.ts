@@ -106,9 +106,25 @@ export class CrunchyrollScraper {
             const data = await response.json();
             this.apiResponses.set(url, data);
             console.log(`📦 API Response stockée: ${url}`);
+            
+            // Log spécial pour les APIs d'épisodes
+            if (url.includes('/episodes')) {
+              const episodeCount = data?.data?.length || 0;
+              console.log(`📈 Episodes API: ${episodeCount} épisodes trouvés`);
+            }
+          } else {
+            if (url.includes('/episodes')) {
+              console.log(`⚠️ API Response non-JSON: ${url} (Content-Type: ${contentType})`);
+            }
           }
         } catch (error) {
-          // Ignorer les erreurs de parsing JSON
+          if (url.includes('/episodes')) {
+            console.log(`❌ Erreur parsing JSON pour: ${url} - ${error}`);
+          }
+        }
+      } else {
+        if (url.includes('/episodes')) {
+          console.log(`⚠️ API Response problématique: ${url} (Status: ${response.status()})`);
         }
       }
     });
@@ -1036,8 +1052,10 @@ export class CrunchyrollScraper {
       console.log(`\n🎭 Traitement Saison ${season.number}: "${season.title}"`);
       
       try {
-        // Nettoyer le cache d'APIs avant chaque saison (sauf la première)
-        if (i > 0) {
+        // Pour la saison 1, pas besoin de changement
+        if (i === 0) {
+          console.log(`📺 Traitement saison ${season.number} (première saison, pas de changement nécessaire)`);
+        } else {
           console.log(`🧹 Nettoyage du cache APIs avant saison ${season.number}...`);
           
           // Garder seulement les APIs de saisons (pas d'épisodes)
@@ -1052,26 +1070,126 @@ export class CrunchyrollScraper {
             this.apiResponses.set(url, data);
           }
           
-          // Naviguer vers cette saison
-          await this.switchToSeason(page, season, i);
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          // SOLUTION SIMPLE: Déclencher l'API directement sans changer de page
+          console.log(`🎯 Déclenchement direct API pour saison ${season.number} (maintien auth)`);
+          
+          try {
+            // Déclencher l'API sans navigation pour maintenir l'auth
+            for (let attempt = 0; attempt < 5; attempt++) {
+              console.log(`🔄 Tentative ${attempt + 1}/5 pour API saison ${season.id}`);
+              
+              await page.evaluate((seasonId) => {
+                // Utiliser les mêmes cookies et headers que la page actuelle
+                fetch(`/content/v2/cms/seasons/${seasonId}/episodes?locale=fr-FR`, {
+                  method: 'GET',
+                  credentials: 'include',
+                  headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Referer': window.location.href
+                  }
+                }).then(response => {
+                  console.log(`🔍 API Test pour ${seasonId}: Status ${response.status}`);
+                  if (response.ok) {
+                    return response.json();
+                  }
+                  throw new Error(`HTTP ${response.status}`);
+                }).then(data => {
+                  console.log(`✅ API Réussie pour ${seasonId}: ${data?.data?.length || 0} épisodes`);
+                }).catch(error => {
+                  console.log(`⚠️ API Echec pour ${seasonId}: ${error}`);
+                });
+              }, season.id);
+              
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            
+            console.log(`✅ Déclenchement API pour saison ${season.number} terminé`);
+            
+            // Attendre que les APIs d'épisodes se chargent
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            // Scroll pour activer le lazy loading des épisodes
+            await page.evaluate(() => {
+              window.scrollTo(0, document.body.scrollHeight);
+            });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            await page.evaluate(() => {
+              window.scrollTo(0, 0);
+            });
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Attendre que l'authentification se stabilise
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Forcer le déclenchement de l'API d'épisodes avec authentification appropriée
+            for (let attempt = 0; attempt < 3; attempt++) {
+              await page.evaluate((seasonId) => {
+                // Récupérer les cookies et headers de la page actuelle
+                const currentCookies = document.cookie;
+                
+                fetch(`/content/v2/cms/seasons/${seasonId}/episodes?locale=fr-FR`, {
+                  method: 'GET',
+                  credentials: 'include',
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Referer': window.location.href,
+                    'User-Agent': navigator.userAgent
+                  }
+                }).then(response => {
+                  console.log(`API Response Status: ${response.status}`);
+                  if (response.status === 401) {
+                    console.log('🔐 Erreur 401 - problème d\'authentification');
+                  }
+                }).catch(error => {
+                  console.log(`API Error: ${error}`);
+                });
+              }, season.id);
+              
+              await new Promise(resolve => setTimeout(resolve, 2500));
+            }
+            
+          } catch (error) {
+            console.log(`⚠️ Navigation directe échouée:`, error);
+            // Fallback vers méthode dropdown
+            const fallbackSuccess = await this.switchToSeason(page, season, i);
+            if (!fallbackSuccess) {
+              console.log(`⚠️ Fallback dropdown également échoué pour saison ${season.number}`);
+            }
+          }
         }
+        
+        // Attendre après tous les changements pour que les APIs se stabilisent
+        console.log(`⏳ Attente stabilisation APIs pour saison ${season.number}...`);
+        await new Promise(resolve => setTimeout(resolve, 8000));
         
         // Extraire les épisodes de cette saison
         const seasonEpisodes = await this.extractEpisodesFromCurrentSeason(page, animeId, season.number, season.id);
         
         console.log(`📺 Saison ${season.number}: ${seasonEpisodes.length} épisode(s) trouvé(s)`);
         
-        // Valider que les épisodes ne sont pas des doublons d'une autre saison
+        // Valider que les épisodes appartiennent à cette saison
         if (seasonEpisodes.length > 0) {
-          const uniqueEpisodes = seasonEpisodes.filter(newEp => 
+          // Validation stricte des épisodes
+          const validEpisodes = this.validateEpisodeSeason(seasonEpisodes, season.id || '', season.number);
+          console.log(`🔍 Validation épisodes: ${validEpisodes.length}/${seasonEpisodes.length} épisodes valides`);
+          
+          // Éliminer les doublons avec les saisons précédentes
+          const uniqueEpisodes = validEpisodes.filter(newEp => 
             !allEpisodes.some(existingEp => 
               existingEp.title === newEp.title && existingEp.episodeNumber === newEp.episodeNumber
             )
           );
           
-          if (uniqueEpisodes.length !== seasonEpisodes.length) {
-            console.log(`⚠️ ${seasonEpisodes.length - uniqueEpisodes.length} doublons détectés et supprimés`);
+          if (validEpisodes.length !== seasonEpisodes.length) {
+            console.log(`⚠️ ${seasonEpisodes.length - validEpisodes.length} épisodes invalides éliminés`);
+          }
+          
+          if (uniqueEpisodes.length !== validEpisodes.length) {
+            console.log(`⚠️ ${validEpisodes.length - uniqueEpisodes.length} doublons supprimés`);
           }
           
           allEpisodes = allEpisodes.concat(uniqueEpisodes);
@@ -1239,31 +1357,55 @@ export class CrunchyrollScraper {
   /**
    * Change vers une saison spécifique en utilisant le dropdown UI
    */
-  private async switchToSeason(page: Page, season: {number: number, title: string, id?: string}, index: number): Promise<void> {
+  private async switchToSeason(page: Page, season: {number: number, title: string, id?: string}, index: number): Promise<boolean> {
     console.log(`🔄 Changement vers saison ${season.number} via dropdown UI...`);
     
     try {
-      // PRIORITÉ 1: Interaction avec le dropdown (méthode principale)
-      console.log(`🔽 Recherche du dropdown de saisons...`);
+      // ÉTAPE 1: Détecter et diagnostiquer la structure du dropdown
+      console.log(`🔍 Diagnostic de la structure dropdown...`);
+      const dropdownInfo = await this.debugDropdownState(page);
+      console.log(`🔍 ${dropdownInfo.length} dropdown(s) détecté(s):`, dropdownInfo);
       
-      // Sélecteurs multiples pour le dropdown des saisons
-      const dropdownSelectors = [
-        '.seasons-select .dropdown--cacSP [role="button"]',
-        '.erc-seasons-select [role="button"]', 
+      // ÉTAPE 2: Sélecteurs robustes basés sur les attributs sémantiques
+      const modernDropdownSelectors = [
+        // Sélecteurs par attributs sémantiques
+        '[data-testid*="season"]',
+        '[aria-label*="season"]', 
+        '[role="combobox"]',
+        'select[name*="season"]',
+        'button[aria-haspopup="listbox"]',
+        // Sélecteurs Crunchyroll spécifiques mais robustes
         '.seasons-select button',
-        '.season-select button',
-        '[data-testid*="season"] button',
+        '.season-select button', 
         '.dropdown-trigger',
-        '.call-to-action--PEidl' // Sélecteur spécifique vu dans les logs
+        // Fallbacks génériques
+        '.dropdown button',
+        '.select button',
+        'button:has(.dropdown-icon)'
       ];
       
       let dropdown = null;
-      for (const selector of dropdownSelectors) {
+      let usedSelector = '';
+      
+      for (const selector of modernDropdownSelectors) {
         try {
-          dropdown = await page.waitForSelector(selector, { timeout: 3000 });
-          if (dropdown) {
-            console.log(`✅ Dropdown trouvé avec sélecteur: ${selector}`);
-            break;
+          const elements = await page.$$(selector);
+          if (elements.length > 0) {
+            // Vérifier si l'élément est visible et cliquable
+            const isVisible = await page.evaluate((sel) => {
+              const el = document.querySelector(sel);
+              if (!el) return false;
+              const htmlEl = el as HTMLElement;
+              const buttonEl = el as HTMLButtonElement;
+              return htmlEl.offsetParent !== null && !buttonEl.disabled;
+            }, selector);
+            
+            if (isVisible) {
+              dropdown = elements[0];
+              usedSelector = selector;
+              console.log(`✅ Dropdown trouvé avec sélecteur robuste: ${selector}`);
+              break;
+            }
           }
         } catch (e) {
           // Continue avec le sélecteur suivant
@@ -1271,70 +1413,81 @@ export class CrunchyrollScraper {
       }
       
       if (!dropdown) {
-        console.log(`⚠️ Aucun dropdown de saisons trouvé, tentative scroll et re-recherche...`);
+        console.log(`⚠️ Aucun dropdown trouvé, scroll et re-recherche...`);
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 3));
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Scroll pour révéler le dropdown
-        await page.evaluate(() => {
-          window.scrollTo(0, 200);
-        });
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Re-essayer
-        for (const selector of dropdownSelectors) {
+        // Re-essayer après scroll
+        for (const selector of modernDropdownSelectors) {
           try {
-            dropdown = await page.waitForSelector(selector, { timeout: 2000 });
-            if (dropdown) break;
+            dropdown = await page.waitForSelector(selector, { timeout: 3000 });
+            if (dropdown) {
+              usedSelector = selector;
+              break;
+            }
           } catch (e) {}
         }
       }
       
       if (dropdown) {
-        console.log(`🔽 Clic sur le dropdown de saisons...`);
+        console.log(`🔽 Clic sur dropdown avec sélecteur: ${usedSelector}...`);
         await dropdown.click();
-        await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // Chercher l'option correspondante avec plusieurs stratégies
-        const seasonOptionSelectors = [
-          // Par ID spécifique
-          ...(season.id ? [`[data-value*="${season.id}"]`, `[data-season-id="${season.id}"]`] : []),
-          // Par numéro de saison
-          `li:has-text("S${season.number}")`,
-          `option:has-text("S${season.number}")`,
-          `[data-testid*="season-${season.number}"]`,
-          // Par titre de saison
-          `li:has-text("${season.title}")`,
-          `option:has-text("${season.title}")`,
-          // Sélecteurs génériques
-          `.dropdown-item:nth-child(${index + 1})`,
-          `.season-option:nth-child(${index + 1})`
-        ];
+        // ÉTAPE 3: Attendre et détecter dynamiquement les options
+        console.log(`⏳ Attente ouverture dropdown et détection options...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        let seasonOption = null;
-        for (const selector of seasonOptionSelectors) {
-          try {
-            seasonOption = await page.waitForSelector(selector, { timeout: 2000 });
-            if (seasonOption) {
-              console.log(`✅ Option saison trouvée avec: ${selector}`);
+        const dropdownOptions = await this.detectDropdownOptions(page, season);
+        console.log(`🔍 ${dropdownOptions.length} option(s) détectée(s) dans le dropdown`);
+        
+        if (dropdownOptions.length > 0) {
+          // Chercher l'option correspondante par contenu
+          let targetOption = null;
+          
+          for (const option of dropdownOptions) {
+            const text = option.text.toLowerCase();
+            const seasonText = season.title.toLowerCase();
+            const seasonNum = season.number.toString();
+            
+            // Correspondance par plusieurs critères
+            if (text.includes(seasonNum) || 
+                text.includes(`season ${seasonNum}`) ||
+                text.includes(`s${seasonNum}`) ||
+                text.includes(seasonText.substring(0, 10))) {
+              
+              targetOption = option;
+              console.log(`✅ Option trouvée: "${option.text}" pour saison ${season.number}`);
               break;
             }
-          } catch (e) {}
-        }
-        
-        if (seasonOption) {
-          console.log(`🔽 Clic sur l'option saison ${season.number}...`);
-          await seasonOption.click();
+          }
           
-          // Attendre que la page se recharge avec les nouveaux épisodes
-          console.log(`⏳ Attente du chargement des épisodes de la saison ${season.number}...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          // Attendre que de nouvelles APIs d'épisodes soient interceptées
-          await page.waitForLoadState('networkidle', { timeout: 10000 });
-          
-          console.log(`✅ Basculé vers saison ${season.number} via dropdown`);
-          return;
+          if (targetOption) {
+            console.log(`🔽 Clic sur option saison ${season.number}...`);
+            
+            // Cliquer sur l'option trouvée
+            await page.evaluate((optionData) => {
+              const element = document.querySelector(optionData.selector);
+              if (element instanceof HTMLElement) {
+                element.click();
+              }
+            }, targetOption);
+            
+            // ÉTAPE 4: Validation du changement et attente des APIs
+            console.log(`⏳ Validation changement vers saison ${season.number}...`);
+            const success = await this.validateSeasonSwitch(page, season);
+            
+            if (success) {
+              console.log(`✅ Changement réussi vers saison ${season.number} via dropdown`);
+              return true;
+            } else {
+              console.log(`⚠️ Changement dropdown échoué, validation negative`);
+            }
+          } else {
+            console.log(`⚠️ Aucune option correspondante trouvée pour saison ${season.number}`);
+            console.log(`📋 Options disponibles:`, dropdownOptions.map(o => o.text));
+          }
         } else {
-          console.log(`⚠️ Option pour saison ${season.number} non trouvée dans le dropdown`);
+          console.log(`⚠️ Dropdown ouvert mais aucune option détectée`);
         }
       }
       
@@ -1358,7 +1511,7 @@ export class CrunchyrollScraper {
           if (jsResult) {
             console.log(`✅ Changement de saison via JavaScript réussi`);
             await new Promise(resolve => setTimeout(resolve, 3000));
-            return;
+            return true;
           }
         } catch (e) {
           console.log(`⚠️ Échec JavaScript: ${e}`);
@@ -1383,7 +1536,7 @@ export class CrunchyrollScraper {
             await page.goto(newUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
             await new Promise(resolve => setTimeout(resolve, 3000));
             console.log(`✅ Navigation URL vers saison ${season.number} réussie`);
-            return;
+            return true;
           } catch (e) {
             console.log(`⚠️ Navigation URL échouée: ${e}`);
           }
@@ -1391,9 +1544,11 @@ export class CrunchyrollScraper {
       }
       
       console.log(`❌ Toutes les méthodes ont échoué pour saison ${season.number}`);
+      return false;
       
     } catch (error) {
       console.log(`⚠️ Erreur lors du changement vers saison ${season.number}:`, (error as Error).message);
+      return false;
     }
   }
 
@@ -1443,21 +1598,42 @@ export class CrunchyrollScraper {
             }).catch(() => {});
           }, seasonId);
           
-          // Attendre que l'API soit interceptée (max 10 secondes)
-          for (let i = 0; i < 20; i++) {
+          // Attendre que l'API soit interceptée (max 15 secondes avec plus de chances)
+          for (let i = 0; i < 30; i++) {
             episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
               url.includes(`/seasons/${seasonId}/episodes`)
             );
             
             if (episodeApiUrl) {
               apiData = this.apiResponses.get(episodeApiUrl);
-              if (apiData) {
+              if (apiData && apiData.data) {
                 console.log(`✅ API interceptée après déclenchement: ${episodeApiUrl}`);
                 break;
               }
             }
             
             await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          
+          // Si toujours pas d'API, déclencher à nouveau avec scroll
+          if (!episodeApiUrl || !apiData) {
+            console.log(`🔄 Tentative de scroll pour déclencher l'API...`);
+            await page.evaluate(() => {
+              window.scrollTo(0, document.body.scrollHeight);
+            });
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await page.evaluate(() => {
+              window.scrollTo(0, 0);
+            });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Re-chercher après scroll
+            episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
+              url.includes(`/seasons/${seasonId}/episodes`)
+            );
+            if (episodeApiUrl) {
+              apiData = this.apiResponses.get(episodeApiUrl);
+            }
           }
         } catch (e) {
           console.log(`⚠️ Erreur déclenchement API: ${e}`);
@@ -1483,16 +1659,33 @@ export class CrunchyrollScraper {
           if (targetUrl !== currentUrl) {
             console.log(`🎯 Navigation forcée vers: ${targetUrl}`);
             await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 5000));
             
-            // Re-chercher l'API après navigation
-            episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
-              url.includes(`/seasons/${seasonId}/episodes`)
-            );
+            // Déclencher manuellement l'API après navigation
+            await page.evaluate((seasonId) => {
+              fetch(`/content/v2/cms/seasons/${seasonId}/episodes?locale=fr-FR`, {
+                credentials: 'include',
+                headers: {
+                  'Accept': 'application/json',
+                  'X-Requested-With': 'XMLHttpRequest'
+                }
+              }).catch(() => {});
+            }, seasonId);
             
-            if (episodeApiUrl) {
-              apiData = this.apiResponses.get(episodeApiUrl);
-              console.log(`✅ API spécifique trouvée après navigation forcée!`);
+            // Attendre l'interception avec timeout
+            for (let i = 0; i < 20; i++) {
+              episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
+                url.includes(`/seasons/${seasonId}/episodes`)
+              );
+              
+              if (episodeApiUrl) {
+                apiData = this.apiResponses.get(episodeApiUrl);
+                if (apiData && apiData.data) {
+                  console.log(`✅ API spécifique trouvée après navigation forcée!`);
+                  break;
+                }
+              }
+              await new Promise(resolve => setTimeout(resolve, 500));
             }
           }
         } catch (e) {
@@ -1683,6 +1876,169 @@ export class CrunchyrollScraper {
     }
     
     return thumbnail;
+  }
+
+  /**
+   * Diagnostic de l'état des dropdowns sur la page
+   */
+  private async debugDropdownState(page: Page): Promise<any[]> {
+    return await page.evaluate(() => {
+      const dropdowns = document.querySelectorAll('select, [role="combobox"], .dropdown, .select, button[aria-haspopup]');
+      return Array.from(dropdowns).map((el, index) => ({
+        index,
+        tagName: el.tagName.toLowerCase(),
+        className: el.className || 'none',
+        visible: (el as HTMLElement).offsetParent !== null,
+        text: (el.textContent || '').trim().substring(0, 100),
+        attributes: Array.from(el.attributes).map(a => `${a.name}="${a.value}"`),
+        selector: `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className ? '.' + el.className.split(' ')[0] : ''}`
+      }));
+    });
+  }
+
+  /**
+   * Détecte dynamiquement les options du dropdown après ouverture
+   */
+  private async detectDropdownOptions(page: Page, season: {number: number, title: string, id?: string}): Promise<any[]> {
+    return await page.evaluate((seasonData) => {
+      const options: any[] = [];
+      
+      // Sélecteurs pour les options de dropdown
+      const optionSelectors = [
+        '[role="option"]', 
+        '.dropdown-item', 
+        '.dropdown-menu li',
+        '.select-option',
+        'li', 
+        'option',
+        'a[href*="season"]',
+        'button[data-season]'
+      ];
+      
+      optionSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach((el, index) => {
+          const text = (el.textContent || '').trim();
+          const href = (el as HTMLAnchorElement).href || '';
+          const value = (el as HTMLOptionElement).value || el.getAttribute('data-value') || '';
+          
+          // Filtrer les options qui semblent être des saisons
+          if (text && (
+            text.match(/s\d+|season\s*\d+/i) ||
+            text.includes(seasonData.title.substring(0, 15)) ||
+            href.includes('/season') ||
+            value.includes('season')
+          )) {
+            options.push({
+              text: text,
+              value: value,
+              href: href,
+              selector: `${selector}:nth-child(${index + 1})`,
+              tagName: el.tagName.toLowerCase(),
+              visible: (el as HTMLElement).offsetParent !== null
+            });
+          }
+        });
+      });
+      
+      // Dédupliquer par texte
+      const uniqueOptions = options.filter((option, index) => 
+        index === options.findIndex(o => o.text === option.text)
+      );
+      
+      return uniqueOptions;
+    }, season);
+  }
+
+  /**
+   * Valide que le changement de saison a réussi
+   */
+  private async validateSeasonSwitch(page: Page, season: {number: number, title: string, id?: string}): Promise<boolean> {
+    try {
+      // Méthode 1: Attendre une nouvelle API d'épisodes pour cette saison
+      if (season.id) {
+        console.log(`🔍 Attente API épisodes pour saison ${season.id}...`);
+        
+        // Attendre jusqu'à 15 secondes pour une nouvelle API d'épisodes
+        let apiFound = false;
+        for (let i = 0; i < 30; i++) {
+          const hasSeasonApi = Array.from(this.apiResponses.keys()).some(url => 
+            url.includes(`/seasons/${season.id}/episodes`)
+          );
+          
+          if (hasSeasonApi) {
+            apiFound = true;
+            console.log(`✅ API épisodes trouvée pour saison ${season.id}`);
+            break;
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        if (apiFound) return true;
+      }
+      
+      // Méthode 2: Vérifier changement URL
+      const currentUrl = page.url();
+      if (season.id && currentUrl.includes(season.id)) {
+        console.log(`✅ URL confirme saison ${season.id}`);
+        return true;
+      }
+      
+      // Méthode 3: Vérifier contenu de la page
+      const pageContent = await page.evaluate((seasonTitle) => {
+        const title = document.querySelector('h1, .series-title, .season-title');
+        return title ? title.textContent?.includes(seasonTitle) : false;
+      }, season.title);
+      
+      if (pageContent) {
+        console.log(`✅ Contenu page confirme saison ${season.title}`);
+        return true;
+      }
+      
+      console.log(`⚠️ Aucune validation réussie pour saison ${season.number}`);
+      return false;
+      
+    } catch (error) {
+      console.log(`⚠️ Erreur validation saison ${season.number}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Valide que les épisodes appartiennent à la bonne saison
+   */
+  private validateEpisodeSeason(episodes: Episode[], expectedSeasonId: string, expectedSeasonNumber: number): Episode[] {
+    if (!episodes || episodes.length === 0) return [];
+    
+    return episodes.filter(episode => {
+      // Vérification 1: URL contient l'ID de saison
+      if (expectedSeasonId && episode.url.includes(expectedSeasonId)) {
+        return true;
+      }
+      
+      // Vérification 2: ID d'épisode contient l'ID de saison  
+      if (expectedSeasonId && episode.id.includes(expectedSeasonId)) {
+        return true;
+      }
+      
+      // Vérification 3: Numéro de saison correspond
+      if (episode.seasonNumber === expectedSeasonNumber) {
+        return true;
+      }
+      
+      // Vérification 4: Éliminer les épisodes avec des URLs d'autres animés
+      const suspiciousPatterns = [
+        '/shield-hero', '/stone-world', '/camping', '/witchling'
+      ];
+      
+      if (suspiciousPatterns.some(pattern => episode.url.includes(pattern))) {
+        console.log(`⚠️ Épisode suspect éliminé: "${episode.title}" - URL: ${episode.url}`);
+        return false;
+      }
+      
+      return false;
+    });
   }
 
   async close(): Promise<void> {
