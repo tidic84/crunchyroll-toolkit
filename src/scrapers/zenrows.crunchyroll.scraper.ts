@@ -1340,18 +1340,46 @@ export class ZenRowsCrunchyrollScraper {
         
         const hasBetterTitle = hasGoodTitle && text.length > 15;
         
-        // Remplacer seulement si on a un meilleur titre ou si pas d'entrée existante
-        if (!episodeMap.has(href) || 
-            (hasBetterTitle && !episodeMap.get(href)?.hasGoodTitle) ||
-            (hasGoodTitle && episodeMap.get(href)?.text === 'NO_TEXT')) {
+        // CRITIQUE: Préserver le meilleur linkEl pour les thumbnails
+        if (!episodeMap.has(href)) {
+          // Première entrée pour cette URL
           episodeMap.set(href, {
             linkEl: linkEl,
             text: text,
             href: href,
             index: index,
             hasGoodTitle: hasGoodTitle,
-            titleQuality: hasBetterTitle ? 3 : (hasGoodTitle ? 2 : 1)
+            titleQuality: hasBetterTitle ? 3 : (hasGoodTitle ? 2 : 1),
+            alternativeLinks: [] // Garder les autres liens pour fallback
           });
+        } else {
+          // URL déjà vue, mettre à jour intelligemment
+          const existing = episodeMap.get(href);
+          
+          // Mise à jour du titre si on a un meilleur
+          if ((hasBetterTitle && !existing.hasGoodTitle) ||
+              (hasGoodTitle && existing.text === 'NO_TEXT') ||
+              (text.length > existing.text.length && hasGoodTitle)) {
+            existing.text = text;
+            existing.hasGoodTitle = hasGoodTitle;
+            existing.titleQuality = hasBetterTitle ? 3 : (hasGoodTitle ? 2 : 1);
+          }
+          
+          // IMPORTANT: Garder le linkEl qui a le plus de chances d'avoir un thumbnail
+          // Les liens avec classes spécifiques ou dans des conteneurs d'images sont prioritaires
+          const currentHasThumbnailContainer = linkEl.closest('[class*="playable"], [class*="thumbnail"], [class*="image"]') ||
+                                             linkEl.parentElement?.querySelector('img, picture');
+          const existingHasThumbnailContainer = existing.linkEl.closest('[class*="playable"], [class*="thumbnail"], [class*="image"]') ||
+                                              existing.linkEl.parentElement?.querySelector('img, picture');
+          
+          if (currentHasThumbnailContainer && !existingHasThumbnailContainer) {
+            // Le nouveau lien semble avoir plus de chances d'avoir un thumbnail
+            existing.linkEl = linkEl;
+            existing.index = index;
+          }
+          
+          // Garder le lien comme alternative
+          existing.alternativeLinks.push(linkEl);
         }
       });
       
@@ -1388,6 +1416,19 @@ export class ZenRowsCrunchyrollScraper {
             !t.match(/^\\d+m$/) && 
             !t.includes('LECTURE')
           ) || '';
+        }
+        
+        // Nettoyer le titre IMMÉDIATEMENT après l'extraction - AVANT autres traitements
+        if (title) {
+          const originalTitle = title;
+          // Supprimer les préfixes de saison/épisode car ils sont dans des champs séparés
+          title = title.replace(/^S\\d+\\s*E\\d+\\s*[-–]\\s*/i, '').trim();
+          title = title.replace(/^Episode\\s*\\d+\\s*[-–]\\s*/i, '').trim();
+          title = title.replace(/^Ep\\s*\\d+\\s*[-–]\\s*/i, '').trim();
+          
+          if (originalTitle !== title) {
+            console.log('🧹 Titre nettoyé: "' + originalTitle + '" -> "' + title + '"');
+          }
         }
         
         // Si toujours pas de titre, construire depuis l'URL
@@ -1492,87 +1533,183 @@ export class ZenRowsCrunchyrollScraper {
           }
         }
         
-        // Extraction du thumbnail améliorée - chercher dans toute la zone de l'épisode
-        const episodeContainer = linkEl.closest('[class*="episode"], [class*="item"], [class*="card"], [role="listitem"], [class*="playable"]') || 
-                                container.parentElement || container;
+        // Extraction du thumbnail améliorée - Méthode hybride
+        // D'abord chercher dans les conteneurs proches, puis élargir si nécessaire
         
-        // Recherche plus agressive des images - chercher dans tous les conteneurs parents/siblings
-        const searchContainers = [
-          episodeContainer,
-          container,
-          linkEl.parentElement,
-          linkEl.closest('article'),
-          linkEl.closest('[class*="wrapper"]'),
-          linkEl.closest('[class*="grid"]'),
-          // Chercher aussi dans les frères et sœurs
-          ...Array.from(episodeContainer.children || []),
-          ...Array.from(episodeContainer.parentElement?.children || [])
-        ].filter(Boolean);
+        let searchContainers = [];
         
-        for (const searchContainer of searchContainers) {
-          const images = searchContainer.querySelectorAll('img');
+        // ÉTAPE 1: Conteneurs proches (pour éviter les conflits)
+        const specificContainer = linkEl.closest('[class*="episode"], [class*="card"], [role="listitem"], [class*="item"], [class*="playable"]');
+        if (specificContainer) {
+          searchContainers.push({ type: 'specific', container: specificContainer });
+        }
+        
+        // ÉTAPE 2: Parents directs
+        if (linkEl.parentElement) searchContainers.push({ type: 'parent', container: linkEl.parentElement });
+        if (linkEl.parentElement?.parentElement) searchContainers.push({ type: 'grandparent', container: linkEl.parentElement.parentElement });
+        if (linkEl.parentElement?.parentElement?.parentElement) searchContainers.push({ type: 'great-grandparent', container: linkEl.parentElement.parentElement.parentElement });
+        
+        console.log('🔍 Episode ' + (episodeList.length + 1) + ' - Recherche thumbnail dans ' + searchContainers.length + ' conteneur(s)');
+        
+        // PRIORITÉ 1: Chercher images avec classes Crunchyroll spécifiques
+        for (const containerInfo of searchContainers) {
+          if (thumbnail) break;
           
-          for (const img of images) {
-            if (img instanceof HTMLImageElement) {
+          const container = containerInfo.container;
+          const thumbnailImages = container.querySelectorAll('img[class*="playable-thumbnail"], img[class*="content-image"]');
+          
+          console.log('  📦 ' + containerInfo.type + ': ' + thumbnailImages.length + ' images thumbnail trouvées');
+          
+          if (thumbnailImages.length > 0) {
+            // Prendre la dernière image si plusieurs (souvent la meilleure qualité)
+            const targetImg = thumbnailImages[thumbnailImages.length - 1];
+            const src = targetImg.src || targetImg.getAttribute('data-src') || targetImg.getAttribute('data-lazy');
+            
+            if (src && src.includes('crunchyroll') && !src.includes('blur=')) {
+              thumbnail = src.trim();
+              const thumbId = thumbnail.split('/').pop().split('.')[0];
+              console.log('  🖼️ Thumbnail classe spécifique: ' + thumbId + '.jpg');
+              break;
+            }
+          }
+        }
+        
+        // PRIORITÉ 2: Chercher la 2ème picture (méthode originale)
+        if (!thumbnail) {
+          for (const containerInfo of searchContainers.slice(0, 2)) { // Limiter aux conteneurs proches
+            if (thumbnail) break;
+            
+            const container = containerInfo.container;
+            const pictureElements = container.querySelectorAll('picture');
+            console.log('  📦 ' + containerInfo.type + ': ' + pictureElements.length + ' pictures trouvées');
+            
+            if (pictureElements.length >= 2) {
+              const normalPicture = pictureElements[1];
+              const normalImg = normalPicture.querySelector('img');
+              if (normalImg) {
+                const normalSrc = normalImg.src || normalImg.getAttribute('data-src') || normalImg.getAttribute('data-lazy');
+                if (normalSrc && normalSrc.includes('crunchyroll') && !normalSrc.includes('blur=')) {
+                  thumbnail = normalSrc.trim();
+                  const thumbId = thumbnail.split('/').pop().split('.')[0];
+                  console.log('  🖼️ Thumbnail 2ème picture: ' + thumbId + '.jpg');
+                  break;
+                }
+              }
+            }
+          }
+        }
+        
+        // PRIORITÉ 3: Chercher toute image Crunchyroll valide
+        if (!thumbnail) {
+          for (const containerInfo of searchContainers) {
+            if (thumbnail) break;
+            
+            const container = containerInfo.container;
+            const allImages = container.querySelectorAll('img');
+            console.log('  🔍 ' + containerInfo.type + ': Analyse ' + allImages.length + ' images');
+            
+            for (const img of allImages) {
               const srcSources = [
                 img.src,
                 img.getAttribute('data-src'),
                 img.getAttribute('data-lazy'),
                 img.getAttribute('data-original'),
-                img.getAttribute('data-background'),
-                img.getAttribute('data-bg'),
-                // Chercher dans srcset pour les images responsive
-                img.getAttribute('srcset')?.split(',').map(s => s.trim().split(' ')[0]).find(url => url.includes('http')),
-                // Chercher dans les attributs style pour les background-image
-                img.getAttribute('style')?.match(/background-image\\s*:\\s*url\\(['"]?([^'"\\)]+)['"]?\\)/)?.[1]
+                img.getAttribute('srcset')?.split(' ')[0]
               ].filter(Boolean);
               
               for (const src of srcSources) {
-                if (src && src.includes('http') && !src.includes('data:image') && !src.includes('placeholder')) {
-                  // Filtres améliorés pour les images Crunchyroll
-                  const isValidThumbnail = (
-                    src.includes('crunchyroll') || 
-                    src.includes('cdn') || 
-                    src.includes('img') ||
-                    src.includes('thumb') ||
-                    src.includes('episode') ||
-                    // Formats d'image communs
-                    /\\.(jpg|jpeg|png|webp)/.test(src.toLowerCase())
-                  ) && (
-                    // Exclure les icônes et petites images
+                if (src && 
+                    (src.includes('crunchyroll') || src.includes('imgsrv')) && 
+                    !src.includes('blur=') && 
+                    !src.includes('placeholder') &&
                     !src.includes('icon') &&
                     !src.includes('logo') &&
-                    !src.includes('avatar') &&
-                    !src.match(/\\d+x\\d+/) || src.match(/(\\d+)x(\\d+)/) && parseInt(RegExp.$1) >= 200
-                  );
-                  
-                  if (isValidThumbnail) {
-                    thumbnail = src.trim();
-                    console.log('🖼️ Thumbnail trouvé:', thumbnail.substring(0, 60));
-                    break;
-                  }
+                    src.match(/\\.(jpg|jpeg|png|webp)/i)) {
+                  thumbnail = src.trim();
+                  const thumbId = thumbnail.split('/').pop().split('.')[0];
+                  console.log('  🖼️ Thumbnail image générale: ' + thumbId + '.jpg');
+                  break;
                 }
               }
               if (thumbnail) break;
             }
           }
-          if (thumbnail) break;
         }
+        
+        // PRIORITÉ 4: Fallback - même images floutées si nécessaire
+        if (!thumbnail) {
+          for (const containerInfo of searchContainers.slice(0, 1)) { // Seulement le conteneur le plus proche
+            if (thumbnail) break;
+            
+            const container = containerInfo.container;
+            const allImages = container.querySelectorAll('img');
+            
+            for (const img of allImages) {
+              const srcSources = [
+                img.src,
+                img.getAttribute('data-src'),
+                img.getAttribute('data-lazy'),
+                img.getAttribute('data-original')
+              ].filter(Boolean);
+              
+              for (const src of srcSources) {
+                if (src && 
+                    (src.includes('crunchyroll') || src.includes('imgsrv')) && 
+                    !src.includes('placeholder') &&
+                    !src.includes('icon') &&
+                    src.match(/\\.(jpg|jpeg|png|webp)/i)) {
+                  thumbnail = src.trim();
+                  const thumbId = thumbnail.split('/').pop().split('.')[0];
+                  console.log('  🖼️ Thumbnail fallback: ' + thumbId + '.jpg (flouté accepté)');
+                  break;
+                }
+              }
+              if (thumbnail) break;
+            }
+          }
+        }
+        
+        // PRIORITÉ 5: Essayer les liens alternatifs si pas de thumbnail trouvé
+        if (!thumbnail && episode.alternativeLinks && episode.alternativeLinks.length > 0) {
+          console.log('  🔄 Tentative liens alternatifs (' + episode.alternativeLinks.length + ' disponibles)');
+          
+          for (const altLinkEl of episode.alternativeLinks) {
+            if (thumbnail) break;
+            
+            // Mêmes conteneurs mais pour le lien alternatif
+            const altContainers = [];
+            const altSpecificContainer = altLinkEl.closest('[class*="episode"], [class*="card"], [role="listitem"], [class*="item"], [class*="playable"]');
+            if (altSpecificContainer) altContainers.push({ type: 'alt-specific', container: altSpecificContainer });
+            if (altLinkEl.parentElement) altContainers.push({ type: 'alt-parent', container: altLinkEl.parentElement });
+            
+            // Essayer extraction sur lien alternatif
+            for (const containerInfo of altContainers) {
+              if (thumbnail) break;
+              
+              const container = containerInfo.container;
+              const thumbnailImages = container.querySelectorAll('img[class*="playable-thumbnail"], img[class*="content-image"]');
+              
+              if (thumbnailImages.length > 0) {
+                const targetImg = thumbnailImages[thumbnailImages.length - 1];
+                const src = targetImg.src || targetImg.getAttribute('data-src') || targetImg.getAttribute('data-lazy');
+                
+                if (src && src.includes('crunchyroll') && !src.includes('blur=')) {
+                  thumbnail = src.trim();
+                  const thumbId = thumbnail.split('/').pop().split('.')[0];
+                  console.log('  🖼️ Thumbnail alternatif trouvé: ' + thumbId + '.jpg');
+                  break;
+                }
+              }
+            }
+          }
+        }
+        
+        // Le nettoyage du titre a déjà été fait plus haut
         
         // Titre final si toujours vide
         if (!title || title.length < 3) {
           title = 'Episode ' + episodeNumber;
         }
-        
-        // Créer une clé unique pour éviter les vrais doublons basée sur l'URL principalement
-        const episodeKey = href; // Utiliser l'URL comme clé principale
-        
-        // Éviter seulement les doublons d'URL exacte (déjà géré plus haut)
-        // if (processedTitles.has(episodeKey)) {
-        //   console.log('🔄 Doublon évité: ' + title);
-        //   return;
-        // }
-        // processedTitles.add(episodeKey);
         
         episodeList.push({
           id: href.split('/watch/')[1]?.split('/')[0] || arguments[0] + '-s' + seasonNumber + 'ep' + episodeNumber,
