@@ -12,8 +12,6 @@ import * as fs from 'fs';
 export class ZenRowsCrunchyrollScraper {
   private browserManager: ZenRowsBrowserManager;
   private baseUrl = 'https://www.crunchyroll.com';
-  private apiBaseUrl = 'https://www.crunchyroll.com/content/v2';
-  private apiResponses: Map<string, any> = new Map();
 
   constructor(options: ScraperOptions = {}) {
     const enhancedOptions = {
@@ -29,45 +27,9 @@ export class ZenRowsCrunchyrollScraper {
 
   async initialize(): Promise<void> {
     await this.browserManager.initialize();
-    await this.setupEnhancedMode();
-    console.log('🚀 Scraper ZenRows Enhanced initialisé - Mode API hybride');
+    console.log('🚀 Scraper ZenRows Enhanced initialisé - Mode DOM optimisé');
   }
 
-  /**
-   * Configuration Enhanced avec simulation d'interception réseau pour Selenium
-   */
-  private async setupEnhancedMode(): Promise<void> {
-    const driver = await this.browserManager.getDriver();
-    
-    // Injection de scripts pour capturer les appels API
-    await driver.executeScript(`
-      // Intercepter les appels fetch pour capturer les APIs
-      const originalFetch = window.fetch;
-      window.__capturedAPIs = new Map();
-      
-      window.fetch = function(...args) {
-        const url = args[0].toString();
-        
-        return originalFetch.apply(this, args).then(response => {
-          // Capturer les réponses API importantes
-          if ((url.includes('/content/v2') || url.includes('/episodes') || url.includes('/cms/seasons/')) && 
-              response.status === 200) {
-            response.clone().json().then(data => {
-              window.__capturedAPIs.set(url, data);
-              console.log('📦 API Response stockée:', url);
-              
-              if (url.includes('/episodes')) {
-                const episodeCount = data?.data?.length || 0;
-                console.log('📈 Episodes API:', episodeCount, 'épisodes trouvés');
-              }
-            }).catch(() => {});
-          }
-          
-          return response;
-        });
-      };
-    `);
-  }
 
   /**
    * Extrait l'ID de série depuis l'URL Crunchyroll
@@ -99,19 +61,11 @@ export class ZenRowsCrunchyrollScraper {
         return await this.searchAnimeAlternative(query);
       }
 
-      // Synchroniser les APIs capturées
-      await this.syncCapturedAPIs();
-
-      // Attendre que les APIs se chargent
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Attendre le chargement de la page
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // PRIORITÉ 1: Exploiter les APIs interceptées (données réelles)
-      let animes = await this.extractFromInterceptedAPIs(query);
-      
-      // PRIORITÉ 2: Si pas d'API, extraction DOM ciblée
-      if (animes.length === 0) {
-        animes = await this.extractAnimesFromSearchPage(query);
-      }
+      // Extraction DOM directe
+      let animes = await this.extractAnimesFromSearchPage(query);
 
       // Filtrer pour garder seulement les vraies séries d'animation
       animes = animes.filter(anime => {
@@ -408,95 +362,6 @@ export class ZenRowsCrunchyrollScraper {
     }
   }
 
-  /**
-   * Synchroniser les APIs capturées depuis le navigateur
-   */
-  private async syncCapturedAPIs(): Promise<void> {
-    try {
-      const driver = await this.browserManager.getDriver();
-      const capturedAPIs = await driver.executeScript(`
-        if (window.__capturedAPIs) {
-          const apis = {};
-          for (const [url, data] of window.__capturedAPIs.entries()) {
-            apis[url] = data;
-          }
-          return apis;
-        }
-        return {};
-      `) as Record<string, any>;
-
-      // Transférer vers notre Map
-      for (const [url, data] of Object.entries(capturedAPIs)) {
-        this.apiResponses.set(url, data);
-      }
-
-      console.log(`📦 ${Object.keys(capturedAPIs).length} API(s) synchronisée(s)`);
-    } catch (error) {
-      console.log('⚠️ Erreur synchronisation APIs:', error);
-    }
-  }
-
-  /**
-   * Extrait les données depuis les APIs interceptées (méthode prioritaire)
-   */
-  private async extractFromInterceptedAPIs(query: string): Promise<any[]> {
-    console.log('🎯 Extraction depuis APIs interceptées...');
-    
-    // Chercher l'API de recherche avec différents formats d'encodage
-    const searchApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => {
-      if (!url.includes('/discover/search')) return false;
-      
-      // Tester différents formats d'encodage
-      const encodedFormats = [
-        encodeURIComponent(query),           // "One%20Piece"
-        query.replace(/\s+/g, '+'),          // "One+Piece"
-        query.replace(/\s+/g, '%20'),        // "One%20Piece"
-        query                                // "One Piece"
-      ];
-      
-      return encodedFormats.some(format => url.includes(format));
-    });
-    
-    if (!searchApiUrl) {
-      console.log('⚠️ Aucune API de recherche interceptée');
-      console.log('📋 APIs disponibles:', Array.from(this.apiResponses.keys()).filter(url => url.includes('/discover/search')));
-      return [];
-    }
-    
-    const apiData = this.apiResponses.get(searchApiUrl);
-    if (!apiData || !apiData.data) {
-      console.log('⚠️ Données API vides');
-      return [];
-    }
-    
-    console.log(`✅ API trouvée: ${searchApiUrl}`);
-    
-    // Parser les résultats API
-    const results: any[] = [];
-    const sections = apiData.data;
-    
-    for (const section of sections) {
-      if (section.type === 'top_results' && section.items) {
-        for (const item of section.items) {
-          if (item.type === 'series') {
-            const anime = {
-              id: item.id,
-              title: item.title,
-              url: `${this.baseUrl}/fr/series/${item.id}`,
-              thumbnail: item.images?.poster_tall?.[0]?.source,
-              description: item.description,
-              type: 'series'
-            };
-            
-            results.push(anime);
-            console.log(`✅ API Série: "${anime.title}"`);
-          }
-        }
-      }
-    }
-    
-    return results;
-  }
 
   /**
    * Extraction ciblée depuis la page de recherche (fallback)
@@ -622,8 +487,7 @@ export class ZenRowsCrunchyrollScraper {
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
 
-      // Synchroniser les APIs et attendre le chargement
-      await this.syncCapturedAPIs();
+      // Attendre le chargement complet de la page
       await new Promise(resolve => setTimeout(resolve, 4000));
       
       // Extraction des épisodes avec support multi-saisons
@@ -669,8 +533,50 @@ export class ZenRowsCrunchyrollScraper {
         const seasonDropdown = document.querySelector('div[aria="Saisons"]');
         if (seasonDropdown) {
           seasonData.dropdownFound = true;
-          seasonData.currentSeason = seasonDropdown.textContent?.trim() || 'S1: Fire Force';
-          console.log('🎬 Dropdown saisons trouvé: ' + seasonData.currentSeason);
+          
+          // Chercher l'option actuellement sélectionnée dans le dropdown
+          let currentSeasonText = 'S1: Fire Force';
+          
+          // Méthode 1: Chercher l'élément avec aria-selected="true" 
+          const selectedOption = seasonDropdown.querySelector('[aria-selected="true"]');
+          if (selectedOption) {
+            currentSeasonText = selectedOption.textContent?.trim() || currentSeasonText;
+            console.log('🎯 Option sélectionnée trouvée:', currentSeasonText);
+          } else {
+            // Méthode 2: Chercher l'élément avec classe selected/active
+            const activeOption = seasonDropdown.querySelector('.selected, .active, [class*="current"]');
+            if (activeOption) {
+              currentSeasonText = activeOption.textContent?.trim() || currentSeasonText;
+              console.log('🎯 Option active trouvée:', currentSeasonText);
+            } else {
+              // Méthode 3: Prendre seulement le texte direct (éviter les enfants)
+              const directText = Array.from(seasonDropdown.childNodes)
+                .filter(node => node.nodeType === Node.TEXT_NODE)
+                .map(node => node.textContent?.trim())
+                .filter(text => text && text.length > 0)
+                .join(' ');
+              
+              if (directText && directText.length > 0 && directText.length < 50) {
+                currentSeasonText = directText;
+                console.log('🎯 Texte direct trouvé:', currentSeasonText);
+              } else {
+                // Méthode 4: Prendre le premier enfant avec du texte court et sensé
+                const childElements = seasonDropdown.querySelectorAll('*');
+                for (const child of childElements) {
+                  const childText = child.textContent?.trim() || '';
+                  if (childText.length > 5 && childText.length < 30 && 
+                      (childText.includes('S') || childText.includes('Season') || childText.includes('Saison'))) {
+                    currentSeasonText = childText;
+                    console.log('🎯 Enfant valide trouvé:', currentSeasonText);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          seasonData.currentSeason = currentSeasonText;
+          console.log('🎬 Dropdown saisons trouvé: "' + seasonData.currentSeason + '"');
         }
         
         // 2. Chercher les boutons de navigation (Saison suivante/précédente)
@@ -974,14 +880,25 @@ export class ZenRowsCrunchyrollScraper {
                !title.includes('eris') && !title.includes('overlord');
       });
       
-      // Corriger le numéro de saison et éviter les doublons
-      const correctedEpisodes = validEpisodes.map(ep => ({
+      // Filtrer pour ne garder que les épisodes qui correspondent vraiment à la saison actuelle
+      const currentSeasonEpisodes = validEpisodes.filter(ep => {
+        const title = ep.title.toLowerCase();
+        const expectedSeasonPrefix = `s${seasonNumber}`;
+        
+        // Vérifier si l'épisode appartient vraiment à cette saison
+        return title.includes(expectedSeasonPrefix) || 
+               (seasonNumber === 1 && !title.match(/s[2-9]/)) || // Saison 1 par défaut si pas de préfixe
+               ep.seasonNumber === seasonNumber;
+      });
+      
+      // Corriger le numéro de saison et les IDs
+      const correctedEpisodes = currentSeasonEpisodes.map(ep => ({
         ...ep,
         seasonNumber: seasonNumber,
         id: `${animeId}-s${seasonNumber}ep${ep.episodeNumber}`
       }));
       
-      // Éviter les doublons d'URLs déjà présentes
+      // Éviter seulement les doublons d'URLs déjà présentes
       const newEpisodes = correctedEpisodes.filter(newEp => 
         !allEpisodes.some(existingEp => existingEp.url === newEp.url)
       );
@@ -1206,13 +1123,32 @@ export class ZenRowsCrunchyrollScraper {
         for (const selector of selectors) {
           const elements = document.querySelectorAll(selector);
           elements.forEach(el => {
-            const text = el.textContent?.trim() || el.getAttribute('aria-label') || '';
-            if (text && (text.includes('Season') || text.includes('Saison') || text.match(/S[1-9]/))) {
-              seasonElements.push({
-                text: text.substring(0, 50),
-                selector: selector,
-                position: el.getBoundingClientRect()
-              });
+            const rawText = el.textContent?.trim() || el.getAttribute('aria-label') || '';
+            if (rawText && (rawText.includes('Season') || rawText.includes('Saison') || rawText.match(/S[1-9]/))) {
+              // Nettoyer le texte de saison pour éviter les doublons et malformations
+              let cleanText = rawText;
+              
+              // Extraire seulement la partie saison pertinente
+              const seasonMatch = rawText.match(/(S\d+:?[^S]*)/i) || 
+                                  rawText.match(/(Season\s*\d+[^S]*)/i) ||
+                                  rawText.match(/(Saison\s*\d+[^S]*)/i);
+              
+              if (seasonMatch) {
+                cleanText = seasonMatch[1].trim();
+                // Limiter à une longueur raisonnable et enlever les répétitions
+                cleanText = cleanText.substring(0, 30).replace(/(.+?)\\1+/g, '$1');
+              } else {
+                cleanText = rawText.substring(0, 30);
+              }
+              
+              // Éviter les doublons exacts
+              if (!seasonElements.some(existing => existing.text === cleanText)) {
+                seasonElements.push({
+                  text: cleanText,
+                  selector: selector,
+                  position: el.getBoundingClientRect()
+                });
+              }
             }
           });
         }
@@ -1729,7 +1665,81 @@ export class ZenRowsCrunchyrollScraper {
       
       console.log('🎬 Total épisodes extraits: ' + episodeList.length);
       
-      return episodeList.sort((a, b) => {
+      // DÉDUPLICATION FINALE : Éliminer les doublons d'URL ET de contenu
+      const finalEpisodes = [];
+      const seenUrls = new Map(); // Clé: URL exacte
+      const seenSlugs = new Map(); // Clé: slug d'épisode (pour détecter même contenu, URLs différentes)
+      
+      episodeList.forEach(episode => {
+        const episodeUrl = episode.url;
+        
+        // Extraire le slug de l'épisode (partie après le dernier slash)
+        const episodeSlug = episodeUrl.split('/').pop() || '';
+        
+        // Déduplication 1: URLs exactement identiques
+        if (seenUrls.has(episodeUrl)) {
+          const existing = seenUrls.get(episodeUrl);
+          
+          // Garder le meilleur entre deux URLs identiques
+          const currentBetter = (
+            (episode.thumbnail && !existing.thumbnail) ||
+            (episode.title.length > existing.title.length && !episode.title.includes('Lecture') && !episode.title.match(/^\\d+m$/)) ||
+            (existing.title.includes('Lecture') && !episode.title.includes('Lecture')) ||
+            (existing.title.match(/^\\d+m$/) && !episode.title.match(/^\\d+m$/))
+          );
+          
+          if (currentBetter) {
+            const existingIndex = finalEpisodes.findIndex(ep => ep.url === episodeUrl);
+            if (existingIndex !== -1) {
+              finalEpisodes[existingIndex] = episode;
+              seenUrls.set(episodeUrl, episode);
+              console.log('🔄 Doublon URL exact éliminé: "' + existing.title + '" remplacé par "' + episode.title + '"');
+            }
+          } else {
+            console.log('🔄 Doublon URL exact éliminé: "' + episode.title + '" (gardé: "' + existing.title + '")');
+          }
+          return;
+        }
+        
+        // Déduplication 2: Même slug d'épisode (même contenu, IDs Crunchyroll différents)
+        if (episodeSlug && seenSlugs.has(episodeSlug)) {
+          const existing = seenSlugs.get(episodeSlug);
+          
+          // Garder le meilleur entre deux épisodes avec même slug
+          const currentBetter = (
+            (episode.thumbnail && !existing.thumbnail) ||
+            (episode.title.length > existing.title.length && !episode.title.includes('Lecture') && !episode.title.match(/^\\d+m$/)) ||
+            (existing.title.includes('Lecture') && !episode.title.includes('Lecture')) ||
+            (existing.title.match(/^\\d+m$/) && !episode.title.match(/^\\d+m$/))
+          );
+          
+          if (currentBetter) {
+            // Remplacer l'épisode existant
+            const existingIndex = finalEpisodes.findIndex(ep => ep.url === existing.url);
+            if (existingIndex !== -1) {
+              finalEpisodes[existingIndex] = episode;
+              seenUrls.delete(existing.url); // Supprimer l'ancienne URL
+              seenUrls.set(episodeUrl, episode); // Ajouter la nouvelle URL
+              seenSlugs.set(episodeSlug, episode);
+              console.log('🔄 Doublon contenu éliminé: "' + existing.title + '" (' + existing.url.split('/').pop() + ') remplacé par "' + episode.title + '" (' + episodeSlug + ')');
+            }
+          } else {
+            console.log('🔄 Doublon contenu éliminé: "' + episode.title + '" (' + episodeSlug + ') (gardé: "' + existing.title + '")');
+          }
+          return;
+        }
+        
+        // Nouvel épisode unique
+        seenUrls.set(episodeUrl, episode);
+        if (episodeSlug) {
+          seenSlugs.set(episodeSlug, episode);
+        }
+        finalEpisodes.push(episode);
+      });
+      
+      console.log('🎬 Après déduplication complète: ' + finalEpisodes.length + ' épisodes uniques');
+      
+      return finalEpisodes.sort((a, b) => {
         if (a.seasonNumber !== b.seasonNumber) {
           return a.seasonNumber - b.seasonNumber;
         }
@@ -1738,64 +1748,6 @@ export class ZenRowsCrunchyrollScraper {
     `, animeId);
   }
 
-  /**
-   * Extraction des épisodes depuis les APIs interceptées
-   */
-  private async extractEpisodesFromAPIs(animeId: string): Promise<Episode[]> {
-    const episodes: Episode[] = [];
-    
-    // Chercher toutes les APIs d'épisodes pour cette série
-    const episodeApis = Array.from(this.apiResponses.keys()).filter(url => 
-      url.includes('/episodes') && (url.includes(animeId) || url.includes('/seasons/'))
-    );
-    
-    console.log(`🔍 ${episodeApis.length} API(s) d'épisodes trouvée(s)`);
-    
-    for (const apiUrl of episodeApis) {
-      const apiData = this.apiResponses.get(apiUrl);
-      if (apiData && apiData.data) {
-        const items = apiData.data;
-        console.log(`📺 API: ${items.length} épisodes dans ${apiUrl}`);
-        
-        for (const item of items) {
-          if (item.type === 'episode' || item.episode_number) {
-            const episode: Episode = {
-              id: item.id || item.guid || `${animeId}-ep${item.episode_number}`,
-              animeId: animeId,
-              title: item.title || `Episode ${item.episode_number}`,
-              episodeNumber: parseInt(item.episode_number) || episodes.length + 1,
-              seasonNumber: parseInt(item.season_number) || 1,
-              url: `${this.baseUrl}/watch/${item.id}/${item.slug_title || ''}`,
-              thumbnail: this.extractThumbnailFromApiItem(item)
-            };
-            
-            episodes.push(episode);
-            console.log(`✅ API Episode ${episode.episodeNumber}: "${episode.title}"`);
-          }
-        }
-      }
-    }
-    
-    return episodes;
-  }
-
-
-
-  /**
-   * Extraction optimisée du thumbnail depuis les données API
-   */
-  private extractThumbnailFromApiItem(item: any): string {
-    const sources = [
-      item.images?.thumbnail?.[0]?.[0]?.source,
-      item.images?.thumbnail?.[0]?.source,
-      item.images?.poster_tall?.[0]?.source,
-      item.thumbnail_image,
-      item.poster_image,
-      item.image
-    ];
-    
-    return sources.find(source => source && source.includes('http')) || '';
-  }
 
   async close(): Promise<void> {
     await this.browserManager.close();
