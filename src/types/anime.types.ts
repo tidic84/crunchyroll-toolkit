@@ -16,10 +16,8 @@ export interface Episode {
   title: string;
   episodeNumber: number;
   seasonNumber?: number;
-  thumbnail: string;
-  description?: string;
-  duration?: number;
-  releaseDate?: Date;
+  thumbnail?: string;
+  duration?: string;
   url: string;
 }
 

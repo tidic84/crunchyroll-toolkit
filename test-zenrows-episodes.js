@@ -108,9 +108,7 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
               seasonNumber: ep.seasonNumber || parseInt(seasonNum),
               url: ep.url,
               thumbnail: ep.thumbnail || null,
-              description: ep.description || null,
-              duration: ep.duration || null,
-              releaseDate: ep.releaseDate ? ep.releaseDate.toISOString() : null
+              duration: ep.duration || null
             }))
         })),
         
@@ -118,7 +116,6 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
         totalSeasons: Object.keys(episodesBySeason).length,
         totalEpisodes: episodes.length,
         episodesWithThumbnails: episodes.filter(ep => ep.thumbnail && ep.thumbnail !== '').length,
-        episodesWithDescriptions: episodes.filter(ep => ep.description).length,
         scraper: 'zenrows-complete'
       }
     };
