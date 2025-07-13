@@ -1336,7 +1336,9 @@ export class CrunchyrollScraper {
           // Éliminer les doublons avec les saisons précédentes
           const uniqueEpisodes = validEpisodes.filter(newEp => 
             !allEpisodes.some(existingEp => 
-              existingEp.title === newEp.title && existingEp.episodeNumber === newEp.episodeNumber
+              existingEp.title === newEp.title && 
+              existingEp.episodeNumber === newEp.episodeNumber &&
+              existingEp.seasonNumber === newEp.seasonNumber
             )
           );
           
@@ -1963,12 +1965,16 @@ export class CrunchyrollScraper {
         
         title = titleSources.find(t => t && t.length > 2) || `Episode ${episodeList.length + 1}`;
         
+        // Numérotation basée sur la position dans la saison actuelle, pas globale
         let episodeNumber = episodeList.length + 1;
-        const numberMatch = title.match(/(?:Episode|E|Ep)\s*(\d+)/i) || 
-                           href.match(/episode[-_]?(\d+)/i) ||
-                           href.match(/\/(\d+)(?:\/|$)/);
+        
+        // Extraire le numéro d'épisode depuis le titre (format "S1 E1", "Episode 1", etc.)
+        const numberMatch = title.match(/S\d+\s+E(\d+)|(?:Episode|E|Ep)\s*(\d+)/i);
         if (numberMatch) {
-          episodeNumber = parseInt(numberMatch[1], 10);
+          episodeNumber = parseInt(numberMatch[1] || numberMatch[2], 10);
+        } else {
+          // Si pas de numéro dans le titre, utiliser la position séquentielle dans cette saison
+          episodeNumber = episodeList.length + 1;
         }
         
         let thumbnail = '';
@@ -1996,9 +2002,19 @@ export class CrunchyrollScraper {
       });
       
       const sortedEpisodes = episodeList.sort((a, b) => a.episodeNumber - b.episodeNumber);
-      console.log(`🎬 Total épisodes DOM saison ${params.seasonNumber}: ${sortedEpisodes.length}`);
       
-      return sortedEpisodes;
+      // Renumerotez les épisodes séquentiellement pour éviter les gaps et numéros incorrects
+      const renumberedEpisodes = sortedEpisodes.map((episode, index) => ({
+        ...episode,
+        episodeNumber: index + 1,
+        id: episode.id.includes('s' + params.seasonNumber + 'ep') 
+          ? `${params.animeId}-s${params.seasonNumber}ep${index + 1}`
+          : episode.id
+      }));
+      
+      console.log(`🎬 Total épisodes DOM saison ${params.seasonNumber}: ${renumberedEpisodes.length}`);
+      
+      return renumberedEpisodes;
     }, { animeId, seasonNumber });
   }
 
@@ -2018,7 +2034,7 @@ export class CrunchyrollScraper {
             id: item.id || item.guid || `${animeId}-s${seasonNumber || 1}ep${item.episode_number}`,
             animeId: animeId,
             title: item.title || `Episode ${item.episode_number}`,
-            episodeNumber: parseInt(item.episode_number) || episodes.length + 1,
+            episodeNumber: episodes.length + 1,
             seasonNumber: seasonNumber || 1,
             url: `${this.baseUrl}/watch/${item.id}/${item.slug_title || ''}`,
             thumbnail: this.extractThumbnailFromItem(item)
@@ -2232,7 +2248,8 @@ export class CrunchyrollScraper {
         return false;
       }
       
-      return false;
+      // Si l'épisode n'a pas déclenché de pattern suspect et a le bon numéro de saison, l'accepter
+      return true;
     });
   }
 
