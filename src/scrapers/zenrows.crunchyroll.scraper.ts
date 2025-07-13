@@ -373,53 +373,140 @@ export class ZenRowsCrunchyrollScraper {
     return await driver.executeScript(`
       const results = [];
       
-      // Sélecteurs spécifiques pour les séries
-      const seriesLinks = document.querySelectorAll('a[href*="/series/"]');
+      console.log('🔍 Recherche de tous les types de liens sur la page pour: ${query}');
       
-      console.log('🔗 ' + seriesLinks.length + ' liens de séries trouvés');
+      // Sélecteurs élargis pour trouver tous les liens possibles
+      const allLinkSelectors = [
+        'a[href*="/series/"]',
+        'a[href*="/watch/"]', 
+        'a[href*="crunchyroll.com"]',
+        'a[title]',
+        'a[aria-label]',
+        '[role="link"]',
+        '[class*="link"]'
+      ];
       
-      const processedUrls = new Set();
+      const foundLinks = new Map();
       
-      seriesLinks.forEach((link) => {
-        const href = link.href;
+      // Debug: compter tous les éléments trouvés
+      console.log('📊 Debug - Analyse de tous les sélecteurs:');
+      
+      allLinkSelectors.forEach((selector, index) => {
+        const elements = document.querySelectorAll(selector);
+        console.log('  ' + (index + 1) + '. "' + selector + '" -> ' + elements.length + ' éléments');
         
-        if (!href || processedUrls.has(href)) return;
-        if (href.includes('/navigation') || href.includes('/footer')) return;
-        
-        processedUrls.add(href);
-        
-        // Extraction du titre
-        let title = '';
-        const titleSources = [
-          link.getAttribute('aria-label'),
-          link.getAttribute('title'),
-          link.querySelector('h3, h4, h5, [class*="title"]')?.textContent?.trim(),
-          link.textContent?.trim()
-        ];
-        
-        title = titleSources.find(t => t && t.length > 2 && t.length < 150) || '';
-        
-        // Extraction de l'image
-        let thumbnail = '';
-        const img = link.querySelector('img') || 
-                   link.closest('[class*="card"]')?.querySelector('img');
-        
-        if (img instanceof HTMLImageElement) {
-          thumbnail = img.src || img.getAttribute('data-src') || '';
-        }
-        
-        if (title && title.length > 2) {
-          results.push({
-            id: href.split('/series/')[1]?.split('/')[0] || href.split('/').pop(),
-            title: title,
-            url: href,
-            thumbnail: thumbnail || undefined,
-            type: 'series'
-          });
-          
-          console.log('✅ DOM Série: "' + title + '"');
+        if (index === 0) { // Premier sélecteur détaillé
+          console.log('🔍 Détail du premier sélecteur (séries):');
+          for (let i = 0; i < Math.min(10, elements.length); i++) {
+            const el = elements[i];
+            const href = el.href || 'NO_HREF';
+            const text = el.textContent?.trim() || 'NO_TEXT';
+            console.log('    ' + (i+1) + '. ' + href + ' -> "' + text.substring(0, 40) + '"');
+          }
         }
       });
+      
+      // Recherche élargie: tous les liens avec du texte
+      const allLinks = document.querySelectorAll('a[href]');
+      console.log('🔍 Total de liens sur la page: ' + allLinks.length);
+      
+      const queryLower = '${query}'.toLowerCase();
+      console.log('🎯 Recherche de: "' + queryLower + '"');
+      
+      let potentialMatches = 0;
+      let seriesCount = 0;
+      
+      allLinks.forEach((link, index) => {
+        const href = link.href || '';
+        const text = (link.textContent?.trim() || '').toLowerCase();
+        const ariaLabel = (link.getAttribute('aria-label') || '').toLowerCase();
+        const title = (link.getAttribute('title') || '').toLowerCase();
+        
+        // Compter les séries
+        if (href.includes('/series/')) {
+          seriesCount++;
+        }
+        
+        // Chercher des correspondances de titre
+        const searchText = text + ' ' + ariaLabel + ' ' + title;
+        if (searchText.includes(queryLower) || 
+            searchText.includes('mynoghra') || 
+            searchText.includes('mino') ||
+            text.includes(queryLower)) {
+          potentialMatches++;
+          console.log('🎯 CORRESPONDANCE POTENTIELLE ' + potentialMatches + ':');
+          console.log('  URL: ' + href);
+          console.log('  Texte: "' + link.textContent?.trim() + '"');
+          console.log('  Aria-label: "' + link.getAttribute('aria-label') + '"');
+          console.log('  Title: "' + link.getAttribute('title') + '"');
+          
+          // Si c'est un lien série ou watch, l'ajouter
+          if (href.includes('/series/') || href.includes('/watch/')) {
+            const cleanTitle = link.textContent?.trim() || 
+                             link.getAttribute('aria-label') || 
+                             link.getAttribute('title') || 
+                             'Episode';
+            
+            if (cleanTitle.length > 2) {
+              const animeId = href.includes('/series/') ? 
+                href.split('/series/')[1]?.split('/')[0] : 
+                href.split('/watch/')[1]?.split('/')[0];
+              
+              results.push({
+                id: animeId || href.split('/').pop(),
+                title: cleanTitle,
+                url: href,
+                thumbnail: undefined,
+                type: href.includes('/series/') ? 'series' : 'episode'
+              });
+              
+              console.log('✅ Ajouté: "' + cleanTitle + '" (' + (href.includes('/series/') ? 'série' : 'épisode') + ')');
+            }
+          }
+        }
+        
+        // Log détaillé pour les premiers liens
+        if (index < 10) {
+          console.log('  Link ' + (index+1) + ': ' + href.substring(0, 50) + ' -> "' + text.substring(0, 30) + '"');
+        }
+      });
+      
+      console.log('📊 Statistiques de recherche:');
+      console.log('  - Total liens analysés: ' + allLinks.length);
+      console.log('  - Liens séries trouvés: ' + seriesCount);
+      console.log('  - Correspondances potentielles: ' + potentialMatches);
+      console.log('  - Résultats finaux: ' + results.length);
+      
+      // Si aucun résultat, chercher dans le HTML brut
+      if (results.length === 0) {
+        console.log('🔍 Recherche dans le HTML brut...');
+        const htmlContent = document.documentElement.innerHTML.toLowerCase();
+        
+        if (htmlContent.includes(queryLower) || htmlContent.includes('mynoghra')) {
+          console.log('✅ "' + queryLower + '" trouvé dans le HTML de la page');
+          
+          // Essayer d'extraire des liens depuis le HTML
+          const htmlMatches = htmlContent.match(/href="[^"]*(?:series|watch)[^"]*"/g) || [];
+          console.log('🔗 ' + htmlMatches.length + ' liens série/watch trouvés dans HTML');
+          
+          htmlMatches.slice(0, 10).forEach((match, i) => {
+            console.log('  HTML ' + (i+1) + ': ' + match);
+          });
+        } else {
+          console.log('❌ "' + queryLower + '" NOT FOUND dans le HTML de la page');
+        }
+        
+        // Debug: voir le contenu visible de la page
+        const visibleText = document.body.textContent || '';
+        console.log('📄 Contenu visible de la page (' + visibleText.length + ' caractères):');
+        console.log('  Début: "' + visibleText.substring(0, 200) + '"');
+        
+        if (visibleText.toLowerCase().includes(queryLower)) {
+          console.log('✅ "' + queryLower + '" trouvé dans le contenu visible');
+        } else {
+          console.log('❌ "' + queryLower + '" NOT FOUND dans le contenu visible');
+        }
+      }
       
       return results;
     `, query);
@@ -440,6 +527,12 @@ export class ZenRowsCrunchyrollScraper {
         id: 'GYQWNXPZY',
         title: 'Fire Force',
         url: 'https://www.crunchyroll.com/fr/series/GYQWNXPZY/fire-force'
+      },
+      {
+        keywords: ['mynoghra', 'apocalypse bringer', 'world conquest'],
+        id: 'G1XHJV0M7',
+        title: 'Apocalypse Bringer Mynoghra: World Conquest Starts with the Civilization of Ruin',
+        url: 'https://www.crunchyroll.com/fr/series/G1XHJV0M7/apocalypse-bringer-mynoghra-world-conquest-starts-with-the-civilization-of-ruin'
       }
     ];
     
