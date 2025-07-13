@@ -23,7 +23,7 @@ export class CrunchyrollScraper {
   constructor(options: ScraperOptions = {}) {
     const enhancedOptions = {
       headless: false,
-      timeout: 60000,
+      timeout: 10000,
       maxRetries: 2,
       locale: 'fr-FR',
       ...options
@@ -193,13 +193,38 @@ export class CrunchyrollScraper {
    * Stratégie de contournement ultra-agressive avec session légitime
    */
   private async smartNavigation(page: Page, targetUrl: string): Promise<boolean> {
+    const startTime = Date.now();
     console.log(`🎯 Navigation intelligente STEALTH vers: ${targetUrl}`);
     
-    // Pré-navigation: masquage ultra-avancé
-    await this.setupSuperStealth(page);
+    // OPTIMISATION: Vérifier si on est déjà sur Crunchyroll
+    const currentUrl = page.url();
+    console.log(`🔍 URL actuelle: ${currentUrl}`);
+    console.log(`🎯 URL cible: ${targetUrl}`);
     
-    // ÉTAPE CRITIQUE: Établir d'abord une session légitime
-    await this.establishLegitimateSession(page);
+    if (currentUrl.includes('crunchyroll.com') && !currentUrl.includes('cloudflare') && !currentUrl.includes('challenge')) {
+      console.log('⚡ Déjà sur Crunchyroll, navigation directe rapide...');
+      try {
+        const fastStartTime = Date.now();
+        await page.goto(targetUrl, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 8000 
+        });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const fastEndTime = Date.now();
+        console.log(`✅ Navigation rapide réussie en ${fastEndTime - fastStartTime}ms!`);
+        return true;
+      } catch (error) {
+        console.log('⚠️ Navigation rapide échouée, fallback vers méthode complète');
+      }
+    } else {
+      console.log(`⚠️ Pas sur Crunchyroll ou problème détecté, navigation complète nécessaire`);
+    }
+    
+    // Pré-navigation: masquage ultra-avancé (désactivé pour performance)
+    // await this.setupSuperStealth(page);
+    
+    // ÉTAPE CRITIQUE: Établir d'abord une session légitime (désactivée pour performance)
+    // await this.establishLegitimateSession(page);
     
     // Stratégie 1: Navigation directe avec session établie
     try {
@@ -209,21 +234,22 @@ export class CrunchyrollScraper {
       await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 2000));
       
       await page.goto(targetUrl, { 
-        waitUntil: 'networkidle',
-        timeout: 45000 
+        waitUntil: 'domcontentloaded',
+        timeout: 8000 
       });
 
-      // Attente plus longue et variable
-      await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 3000));
+      // Attente réduite et moins variable
+      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
 
       const hasChallenge = await this.detectCloudflareChallenge(page);
       if (!hasChallenge) {
-        console.log('✅ Navigation directe avec session légitime réussie!');
+        const endTime = Date.now();
+        console.log(`✅ Navigation directe avec session légitime réussie en ${endTime - startTime}ms!`);
         return true;
       } else {
         console.log('🛡️ Challenge détecté, attente résolution...');
         // Attendre que le challenge se résolve
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         const stillHasChallenge = await this.detectCloudflareChallenge(page);
         if (!stillHasChallenge) {
@@ -240,25 +266,26 @@ export class CrunchyrollScraper {
       console.log('📍 Tentative 2: Via page d\'accueil...');
       await page.goto(this.baseUrl, { 
         waitUntil: 'domcontentloaded',
-        timeout: 20000 
+        timeout: 8000 
       });
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Navigation interne (moins détectable)
       if (targetUrl.includes('/search')) {
         const query = new URL(targetUrl).searchParams.get('q') || '';
-        const searchInput = await page.waitForSelector('input[type="search"], input[placeholder*="search"]', { timeout: 10000 });
+        const searchInput = await page.waitForSelector('input[type="search"], input[placeholder*="search"]', { timeout: 5000 });
         
         if (searchInput) {
           await searchInput.click();
           await searchInput.fill(query);
           await page.keyboard.press('Enter');
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           const hasChallenge = await this.detectCloudflareChallenge(page);
           if (!hasChallenge) {
-            console.log('✅ Navigation via recherche réussie!');
+            const endTime = Date.now();
+            console.log(`✅ Navigation via recherche réussie en ${endTime - startTime}ms!`);
             return true;
           }
         }
@@ -269,7 +296,10 @@ export class CrunchyrollScraper {
 
     // Stratégie 3: Approche API alternative
     console.log('📍 Tentative 3: Approche API alternative...');
-    return await this.tryApiApproach(page, targetUrl);
+    const result = await this.tryApiApproach(page, targetUrl);
+    const endTime = Date.now();
+    console.log(`⏱️ smartNavigation terminée en ${endTime - startTime}ms`);
+    return result;
   }
 
   /**
@@ -371,14 +401,14 @@ export class CrunchyrollScraper {
         throw new Error('Navigation vers la page de recherche échouée');
       }
 
-      // Simulation comportement utilisateur réel
-      await this.simulateHumanBehavior(page);
+      // Simulation comportement utilisateur réel (désactivée pour performance)
+      // await this.simulateHumanBehavior(page);
       
       // Attendre que les APIs se chargent avec timeout intelligent
       console.log('⏳ Attente chargement APIs...');
       let apiFound = false;
       let waitTime = 0;
-      const maxWait = 15000; // 15 secondes max
+      const maxWait = 3000; // 3 secondes max
       
       while (!apiFound && waitTime < maxWait) {
         // Vérifier si on a intercepté des APIs de recherche
@@ -394,11 +424,11 @@ export class CrunchyrollScraper {
           break;
         }
         
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        waitTime += 1000;
+        await new Promise(resolve => setTimeout(resolve, 200));
+        waitTime += 200;
         
         // Déclencher APIs supplémentaires à mi-chemin
-        if (waitTime === 7000) {
+        if (waitTime >= 1400) {
           console.log('🔄 Déclenchement APIs supplémentaires...');
           await this.triggerAdditionalAPIs(page, query);
         }
@@ -675,7 +705,7 @@ export class CrunchyrollScraper {
         // Naviguer vers l'URL de la série pour récupérer les vraies données
         try {
           await page.goto(anime.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           // Extraire les vraies métadonnées
           const realData = await page.evaluate(() => {
@@ -717,7 +747,7 @@ export class CrunchyrollScraper {
     console.log('📄 Extraction depuis page web...');
     
     // Attendre que le contenu se charge
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     return await page.evaluate((searchQuery) => {
       const results: any[] = [];
@@ -862,7 +892,7 @@ export class CrunchyrollScraper {
     console.log('🔍 Recherche dans les appels API interceptés...');
     
     // Attendre un peu pour laisser les appels API se faire
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     // Essayer d'extraire depuis les données déjà chargées via API
     const searchApiResults = await page.evaluate((searchQuery) => {
@@ -1110,14 +1140,14 @@ export class CrunchyrollScraper {
       
       if (navigationSuccess) {
         // Attendre le chargement et essayer de cliquer sur l'onglet épisodes
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         try {
           const episodeTab = await page.waitForSelector('a:has-text("Episodes"), button:has-text("Episodes"), [data-testid*="episodes"]', { timeout: 5000 });
           if (episodeTab) {
             console.log('📺 Clic sur onglet épisodes...');
             await episodeTab.click();
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         } catch {
           console.log('📺 Pas d\'onglet épisodes trouvé, recherche directe...');
@@ -1195,7 +1225,7 @@ export class CrunchyrollScraper {
               if (nextSeasonClicked) {
                 console.log(`✅ Clic ${clickCount} réussi`);
                 // Attendre le chargement de la nouvelle saison
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                await new Promise(resolve => setTimeout(resolve, 500));
               } else {
                 console.log(`❌ Bouton "Saison suivante" non trouvé ou désactivé`);
                 break;
@@ -1259,19 +1289,19 @@ export class CrunchyrollScraper {
                 });
               }, season.id);
               
-              await new Promise(resolve => setTimeout(resolve, 3000));
+              await new Promise(resolve => setTimeout(resolve, 500));
             }
             
             console.log(`✅ Déclenchement API pour saison ${season.number} terminé`);
             
             // Attendre que les APIs d'épisodes se chargent
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Scroll pour activer le lazy loading des épisodes
             await page.evaluate(() => {
               window.scrollTo(0, document.body.scrollHeight);
             });
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             await page.evaluate(() => {
               window.scrollTo(0, 0);
@@ -1279,7 +1309,7 @@ export class CrunchyrollScraper {
             await new Promise(resolve => setTimeout(resolve, 1000));
             
             // Attendre que l'authentification se stabilise
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Forcer le déclenchement de l'API d'épisodes avec authentification appropriée
             for (let attempt = 0; attempt < 3; attempt++) {
@@ -1611,7 +1641,7 @@ export class CrunchyrollScraper {
       if (!dropdown) {
         console.log(`⚠️ Aucun dropdown trouvé, scroll et re-recherche...`);
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 3));
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Re-essayer après scroll
         for (const selector of modernDropdownSelectors) {
@@ -1631,7 +1661,7 @@ export class CrunchyrollScraper {
         
         // ÉTAPE 3: Attendre et détecter dynamiquement les options
         console.log(`⏳ Attente ouverture dropdown et détection options...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         const dropdownOptions = await this.detectDropdownOptions(page, season);
         console.log(`🔍 ${dropdownOptions.length} option(s) détectée(s) dans le dropdown`);
@@ -1706,7 +1736,7 @@ export class CrunchyrollScraper {
           
           if (jsResult) {
             console.log(`✅ Changement de saison via JavaScript réussi`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             return true;
           }
         } catch (e) {
@@ -1730,7 +1760,7 @@ export class CrunchyrollScraper {
           console.log(`🎯 Tentative navigation: ${newUrl}`);
           try {
             await page.goto(newUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             console.log(`✅ Navigation URL vers saison ${season.number} réussie`);
             return true;
           } catch (e) {
@@ -1762,7 +1792,7 @@ export class CrunchyrollScraper {
       console.log(`🎯 Recherche API spécifique pour saison ${seasonId}...`);
       
       // Attendre un peu que les APIs se chargent après changement de saison
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Chercher l'API spécifique dans les réponses interceptées
       episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
@@ -1821,7 +1851,7 @@ export class CrunchyrollScraper {
             await page.evaluate(() => {
               window.scrollTo(0, 0);
             });
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Re-chercher après scroll
             episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
@@ -1855,8 +1885,8 @@ export class CrunchyrollScraper {
           
           if (targetUrl !== currentUrl) {
             console.log(`🎯 Navigation forcée vers: ${targetUrl}`);
-            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Déclencher manuellement l'API après navigation
             await page.evaluate((seasonId) => {
@@ -1911,7 +1941,7 @@ export class CrunchyrollScraper {
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight / 2);
     });
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     await page.evaluate(() => {
       window.scrollTo(0, 0);
     });
@@ -2425,14 +2455,14 @@ export class CrunchyrollScraper {
       });
       
       // 5. Attente pour laisser les APIs se déclencher
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // 6. Défilement final pour déclencher lazy loading
       await page.evaluate(() => {
         // Scroll jusqu'en bas pour déclencher tous les lazy loadings
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
       });
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // 7. Retour en position de lecture
       await page.evaluate(() => {
@@ -2462,13 +2492,13 @@ export class CrunchyrollScraper {
       });
       
       // 2. Attendre et simuler navigation humaine
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // 3. Faire défiler la page pour déclencher les APIs légitimes
       await page.evaluate(() => {
         window.scrollTo({ top: 300, behavior: 'smooth' });
       });
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // 4. Hover sur des éléments pour paraître humain
       try {
@@ -2497,7 +2527,7 @@ export class CrunchyrollScraper {
         await page.evaluate(() => {
           window.scrollTo({ top: document.body.scrollHeight / 2, behavior: 'smooth' });
         });
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Essayer de cliquer sur des liens populaires
         try {
@@ -2586,7 +2616,7 @@ export class CrunchyrollScraper {
       }, query);
       
       // Attendre que les appels se terminent
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
     } catch (error) {
       console.log('⚠️ Erreur déclenchement APIs:', error);

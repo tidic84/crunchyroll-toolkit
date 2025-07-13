@@ -16,8 +16,8 @@ export class ZenRowsCrunchyrollScraper {
   constructor(options: ScraperOptions = {}) {
     const enhancedOptions = {
       headless: false,
-      timeout: 60000,
-      maxRetries: 2,
+      timeout: 30000,
+      maxRetries: 1,
       locale: 'fr-FR',
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       ...options
@@ -62,7 +62,7 @@ export class ZenRowsCrunchyrollScraper {
       }
 
       // Attendre le chargement de la page
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 750));
       
       // Extraction DOM directe
       let animes = await this.extractAnimesFromSearchPage(query);
@@ -142,7 +142,7 @@ export class ZenRowsCrunchyrollScraper {
       const pageTitle = await this.browserManager.getTitle();
       console.log(`📄 Page: "${pageTitle}"`);
       
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 750));
       
       // Extraire tous les liens série
       const driver = await this.browserManager.getDriver();
@@ -284,7 +284,7 @@ export class ZenRowsCrunchyrollScraper {
       await this.browserManager.navigateTo(targetUrl);
 
       // Attendre courte pour voir si ça passe
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 750));
 
       const hasChallenge = await this.detectCloudflareChallenge();
       if (!hasChallenge) {
@@ -300,7 +300,7 @@ export class ZenRowsCrunchyrollScraper {
       console.log('📍 Tentative 2: Via page d\'accueil...');
       await this.browserManager.navigateTo(this.baseUrl);
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Navigation interne (moins détectable)
       if (targetUrl.includes('/search')) {
@@ -315,7 +315,7 @@ export class ZenRowsCrunchyrollScraper {
             await searchInput.clear();
             await searchInput.sendKeys(query);
             await driver.executeScript('arguments[0].form.submit();', searchInput);
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 750));
             
             const hasChallenge = await this.detectCloudflareChallenge();
             if (!hasChallenge) {
@@ -484,11 +484,11 @@ export class ZenRowsCrunchyrollScraper {
       if (!navigationSuccess) {
         console.log('⚠️ Navigation échouée, tentative méthode alternative...');
         await this.browserManager.navigateTo(fullUrl);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 2500));
       }
 
       // Attendre le chargement complet de la page
-      await new Promise(resolve => setTimeout(resolve, 4000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Extraction des épisodes avec support multi-saisons
       const episodes = await this.extractEpisodesEnhanced(animeId, animeSlug);
@@ -514,7 +514,7 @@ export class ZenRowsCrunchyrollScraper {
       // Fire Force utilise un seul series ID avec sélecteur de saisons sur la même page
       const mainUrl = 'https://www.crunchyroll.com/fr/series/GYQWNXPZY/fire-force';
       await this.browserManager.navigateTo(mainUrl);
-      await new Promise(resolve => setTimeout(resolve, 4000));
+      await new Promise(resolve => setTimeout(resolve, 2500));
       
       const driver = await this.browserManager.getDriver();
       
@@ -680,7 +680,7 @@ export class ZenRowsCrunchyrollScraper {
             `);
             
             if (clicked) {
-              await new Promise(resolve => setTimeout(resolve, 3000));
+              await new Promise(resolve => setTimeout(resolve, 750));
               await this.extractSeasonEpisodes(driver, animeId, seasonNumber, allEpisodes);
             }
             
@@ -755,7 +755,7 @@ export class ZenRowsCrunchyrollScraper {
             `, seasonNumber);
             
             if (clicked) {
-              await new Promise(resolve => setTimeout(resolve, 4000));
+              await new Promise(resolve => setTimeout(resolve, 2000));
               
               // Vérifier si on a bien changé de saison en examinant les épisodes
               const seasonChanged = await driver.executeScript(`
@@ -865,11 +865,11 @@ export class ZenRowsCrunchyrollScraper {
       await driver.executeScript(`
         for(let i = 0; i < 5; i++) {
           window.scrollTo(0, document.body.scrollHeight);
-          await new Promise(resolve => setTimeout(resolve, 800));
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
         window.scrollTo(0, 0);
       `);
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 750));
       
       const seasonEpisodes = await this.extractAllEpisodesSimple(animeId);
       
@@ -925,9 +925,9 @@ export class ZenRowsCrunchyrollScraper {
     
     // Scroll pour révéler tous les épisodes (méthode qui marchait avant)
     await driver.executeScript('window.scrollTo(0, document.body.scrollHeight);');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 750));
     await driver.executeScript('window.scrollTo(0, 0);');
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Utiliser le sélecteur simple qui trouvait 74 épisodes
     console.log('🔍 Recherche des épisodes et saisons...');
@@ -995,14 +995,14 @@ export class ZenRowsCrunchyrollScraper {
                   await new Promise(resolve => setTimeout(resolve, 200));
                   
                   await driver.executeScript('arguments[0].click();', seasonEl);
-                  await new Promise(resolve => setTimeout(resolve, 1500));
+                  await new Promise(resolve => setTimeout(resolve, 750));
                   
                   // Scroll rapide pour charger les épisodes
                   await driver.executeScript(`
                     window.scrollTo(0, document.body.scrollHeight);
                     setTimeout(() => window.scrollTo(0, 0), 500);
                   `);
-                  await new Promise(resolve => setTimeout(resolve, 800));
+                  await new Promise(resolve => setTimeout(resolve, 400));
                 }
               } catch (error) {
                 console.log(`    ⚠️ Erreur saison ${i + 1}:`, (error as Error).message);
@@ -1034,7 +1034,7 @@ export class ZenRowsCrunchyrollScraper {
       let loadedMore = true;
       let attempts = 0;
       
-      while (loadedMore && attempts < 3) {
+      while (loadedMore && attempts < 2) {
         loadedMore = await driver.executeScript(`
           const initialCount = document.querySelectorAll('a[href*="/watch/"]').length;
           console.log('🔍 Episode count before loading: ' + initialCount);
@@ -1080,12 +1080,12 @@ export class ZenRowsCrunchyrollScraper {
           
           // Attendre un peu après les clics
           if (clickedSomething) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 750));
           }
           
           // Scroll final
           window.scrollTo(0, document.body.scrollHeight);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           
           const finalCount = document.querySelectorAll('a[href*="/watch/"]').length;
           console.log('🔍 Episode count after loading: ' + finalCount);
@@ -1097,11 +1097,11 @@ export class ZenRowsCrunchyrollScraper {
         console.log(`🔄 Tentative ${attempts}: ${loadedMore ? 'Plus d\'épisodes chargés' : 'Aucun nouvel épisode'}`);
         
         if (loadedMore) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
       
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Recherche et navigation multi-saisons améliorée
       console.log('🔍 Recherche des saisons disponibles...');
@@ -1181,14 +1181,14 @@ export class ZenRowsCrunchyrollScraper {
           `);
           
           if (clicked) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 750));
             
             // Scroll pour charger les nouveaux épisodes
             await driver.executeScript(`
               window.scrollTo(0, document.body.scrollHeight);
               setTimeout(() => window.scrollTo(0, 0), 1000);
             `);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
           
         } catch (error) {

@@ -14,7 +14,7 @@ async function testSimple(input = 'Fire Force') {
     // Création du scraper avec configuration minimale
     scraper = await createCrunchyrollScraper({
       headless: false,
-      timeout: 60000
+      timeout: 5000
     });
 
     // Détection si input est une URL ou un titre
