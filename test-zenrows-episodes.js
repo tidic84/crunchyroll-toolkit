@@ -53,6 +53,11 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
       const episodesResult = await scraper.getEpisodes(anime.url);
       if (!episodesResult.success) throw new Error(`Erreur épisodes: ${episodesResult.error}`);
       episodes = episodesResult.data;
+      
+      // Enrichir l'anime avec les métadonnées extraites si disponibles
+      if (episodesResult.metadata) {
+        anime.releaseYear = anime.releaseYear || episodesResult.metadata.releaseYear;
+      }
     }
 
     console.log(`📊 Total épisodes récupérés: ${episodes.length}`);
@@ -86,11 +91,7 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
         id: anime.id,
         title: anime.title,
         url: anime.url,
-        thumbnail: anime.thumbnail || null,
-        description: anime.description || null,
-        genres: anime.genres || [],
         releaseYear: anime.releaseYear || null,
-        rating: anime.rating || null,
         episodeCount: anime.episodeCount || episodes.length
       },
       
@@ -107,7 +108,6 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
               episodeNumber: ep.episodeNumber,
               seasonNumber: ep.seasonNumber || parseInt(seasonNum),
               url: ep.url,
-              thumbnail: ep.thumbnail || null,
               duration: ep.duration || null
             }))
         })),
@@ -115,7 +115,6 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
       summary: {
         totalSeasons: Object.keys(episodesBySeason).length,
         totalEpisodes: episodes.length,
-        episodesWithThumbnails: episodes.filter(ep => ep.thumbnail && ep.thumbnail !== '').length,
         scraper: 'zenrows-complete'
       }
     };

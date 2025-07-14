@@ -33,6 +33,7 @@ export interface ScraperResult<T> {
   success: boolean;
   data?: T;
   error?: string;
+  metadata?: any;
 }
 
 export interface AnimeSeries extends Anime {

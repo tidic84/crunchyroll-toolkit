@@ -556,6 +556,155 @@ export class ZenRowsCrunchyrollScraper {
   }
 
   /**
+   * Extraction des métadonnées de l'anime depuis la page série
+   */
+  private async extractAnimeMetadata(): Promise<any> {
+    try {
+      console.log('📋 Extraction des métadonnées de l\'anime...');
+      
+      const driver = await this.browserManager.getDriver();
+      
+      return await driver.executeScript(() => {
+        const metadata: any = {
+          thumbnail: null,
+          description: null,
+          genres: [],
+          releaseYear: null
+        };
+        
+        console.log('🔍 Recherche des métadonnées sur la page...');
+        
+        // EXTRACTION DU THUMBNAIL PRINCIPAL
+        console.log('🖼️ Recherche du thumbnail principal...');
+        const thumbnailSelectors = [
+          'img[class*="hero-image"]',
+          'img[class*="poster"]', 
+          'img[class*="series-image"]',
+          'picture img',
+          '[class*="media"] img',
+          'img[src*="imgsrv.crunchyroll.com"]'
+        ];
+        
+        for (const selector of thumbnailSelectors) {
+          const img = document.querySelector(selector);
+          if (img instanceof HTMLImageElement) {
+            const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy');
+            if (src && src.includes('crunchyroll') && !src.includes('blur=') && !src.includes('icon')) {
+              metadata.thumbnail = src;
+              const thumbId = src.split('/').pop()?.split('.')[0] || 'thumbnail';
+              console.log('✅ Thumbnail trouvé: ' + thumbId + '.jpg via ' + selector);
+              break;
+            }
+          }
+        }
+        
+        // EXTRACTION DE LA DESCRIPTION
+        console.log('📄 Recherche de la description...');
+        const descriptionSelectors = [
+          '[class*="description"] p',
+          '[class*="synopsis"] p',
+          '[class*="overview"] p',
+          '[data-testid*="description"]',
+          '[class*="summary"]',
+          'p[class*="text"]'
+        ];
+        
+        for (const selector of descriptionSelectors) {
+          const descElement = document.querySelector(selector);
+          if (descElement) {
+            const text = descElement.textContent?.trim();
+            if (text && text.length > 50 && text.length < 1000) {
+              metadata.description = text;
+              console.log('✅ Description trouvée: "' + text.substring(0, 50) + '..." via ' + selector);
+              break;
+            }
+          }
+        }
+        
+        // EXTRACTION DES GENRES
+        console.log('🏷️ Recherche des genres...');
+        const genreSelectors = [
+          '[class*="genre"] a',
+          '[class*="tag"] a',
+          '[class*="category"] a',
+          'a[href*="/genre/"]',
+          '[class*="genres"] span',
+          '[data-testid*="genre"]'
+        ];
+        
+        const foundGenres = new Set();
+        
+        for (const selector of genreSelectors) {
+          const genreElements = document.querySelectorAll(selector);
+          genreElements.forEach(el => {
+            const text = el.textContent?.trim();
+            if (text && text.length > 2 && text.length < 30 && 
+                !text.includes('http') && !text.includes('www') &&
+                !foundGenres.has(text.toLowerCase())) {
+              foundGenres.add(text.toLowerCase());
+              metadata.genres.push(text);
+              console.log('✅ Genre trouvé: "' + text + '" via ' + selector);
+            }
+          });
+          
+          if (metadata.genres.length >= 5) break; // Limiter à 5 genres max
+        }
+        
+        // EXTRACTION DE L'ANNÉE DE SORTIE
+        console.log('📅 Recherche de l\'année de sortie...');
+        const yearSources = [
+          document.querySelector('[class*="year"]')?.textContent,
+          document.querySelector('[class*="date"]')?.textContent,
+          document.querySelector('[class*="release"]')?.textContent,
+          document.querySelector('[data-testid*="year"]')?.textContent,
+          document.querySelector('[data-testid*="date"]')?.textContent,
+          document.title,
+          document.body.textContent
+        ];
+        
+        for (const source of yearSources) {
+          if (source) {
+            const yearMatch = source.match(/20[0-2][0-9]/); // Années entre 2000 et 2029
+            if (yearMatch) {
+              const year = parseInt(yearMatch[0]);
+              if (year >= 2000 && year <= new Date().getFullYear()) {
+                metadata.releaseYear = year;
+                console.log('✅ Année trouvée: ' + year);
+                break;
+              }
+            }
+          }
+        }
+        
+        // Si pas de thumbnail principal trouvé, chercher dans les épisodes
+        if (!metadata.thumbnail) {
+          console.log('🔍 Recherche thumbnail depuis les épisodes...');
+          const episodeImg = document.querySelector('a[href*="/watch/"] img');
+          if (episodeImg instanceof HTMLImageElement) {
+            const src = episodeImg.src || episodeImg.getAttribute('data-src');
+            if (src && src.includes('crunchyroll')) {
+              metadata.thumbnail = src;
+              console.log('✅ Thumbnail depuis épisodes: ' + (src.split('/').pop() || 'episode-thumb'));
+            }
+          }
+        }
+        
+        console.log('📋 Métadonnées extraites:', metadata);
+        return metadata;
+      });
+      
+    } catch (error) {
+      console.log('⚠️ Erreur extraction métadonnées:', (error as Error).message);
+      return {
+        thumbnail: null,
+        description: null,
+        genres: [],
+        releaseYear: null
+      };
+    }
+  }
+
+  /**
    * Récupération des épisodes avec approche multi-saisons robuste
    */
   async getEpisodes(animeUrl: string): Promise<ScraperResult<Episode[]>> {
@@ -583,11 +732,21 @@ export class ZenRowsCrunchyrollScraper {
       // Attendre le chargement complet de la page
       await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // Extraction des métadonnées de l'anime depuis la page
+      const animeMetadata = await this.extractAnimeMetadata();
+      
       // Extraction des épisodes avec support multi-saisons
       const episodes = await this.extractEpisodesEnhanced(animeId, animeSlug);
 
       console.log(`✅ ${episodes.length} épisode(s) extrait(s) de la série`);
-      return { success: true, data: episodes };
+      
+      // Enrichir les données avec les métadonnées extraites
+      const enrichedEpisodes = episodes.map(ep => ({
+        ...ep,
+        animeMetadata: animeMetadata
+      }));
+      
+      return { success: true, data: enrichedEpisodes, metadata: animeMetadata };
       
     } catch (error) {
       return { 
