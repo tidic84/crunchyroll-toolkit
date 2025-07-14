@@ -23,9 +23,9 @@ npm run build
 ### Import and initialization
 
 ```javascript
-const { createZenRowsCrunchyrollScraper } = require('./lib/zenrows.index');
+const { createCrunchyrollToolkitScraper } = require('./lib/crunchyroll-toolkit.index');
 
-const scraper = await createZenRowsCrunchyrollScraper({
+const scraper = await createCrunchyrollToolkitScraper({
   headless: false,
   timeout: 30000,
   locale: 'fr-FR'
@@ -59,14 +59,14 @@ console.log(episodes.data); // Array of episodes with thumbnails
 A complete test is provided for the anime "Apocalypse Bringer Mynoghra":
 
 ```bash
-node test-zenrows-episodes.js "Mynoghra"
+node test-crunchyroll-toolkit.js "Mynoghra"
 ```
 
 You can also test with other anime:
 
 ```bash
-node test-zenrows-episodes.js "Fire Force"
-node test-zenrows-episodes.js "One Piece"
+node test-crunchyroll-toolkit.js "Fire Force"
+node test-crunchyroll-toolkit.js "One Piece"
 ```
 
 ## 📁 Project Structure
@@ -75,21 +75,21 @@ node test-zenrows-episodes.js "One Piece"
 crunchyroll-toolkit/
 ├── src/
 │   ├── scrapers/
-│   │   ├── crunchyroll.scraper.ts          # Original scraper
-│   │   ├── selenium.crunchyroll.scraper.ts # Selenium-based scraper
-│   │   └── zenrows.crunchyroll.scraper.ts  # ZenRows enhanced scraper
+│   │   ├── crunchyroll.scraper.ts              # Original scraper
+│   │   ├── selenium.crunchyroll.scraper.ts     # Selenium-based scraper
+│   │   └── crunchyroll-toolkit.scraper.ts      # Crunchyroll Toolkit scraper
 │   ├── types/
-│   │   └── anime.types.ts                  # TypeScript types
+│   │   └── anime.types.ts                      # TypeScript types
 │   ├── utils/
-│   │   ├── browser.utils.ts                # Browser management
-│   │   ├── selenium.browser.utils.ts       # Selenium browser utils
-│   │   ├── zenrows.browser.utils.ts        # ZenRows browser utils
-│   │   └── parser.utils.ts                 # Parsing utilities
-│   ├── index.ts                            # Main entry point
-│   ├── selenium.index.ts                   # Selenium entry point
-│   └── zenrows.index.ts                    # ZenRows entry point
-├── lib/                                    # Compiled code (generated)
-├── test-zenrows-episodes.js                # Main test file
+│   │   ├── browser.utils.ts                    # Browser management
+│   │   ├── selenium.browser.utils.ts           # Selenium browser utils
+│   │   ├── crunchyroll-toolkit.browser.utils.ts # Crunchyroll Toolkit browser utils
+│   │   └── parser.utils.ts                     # Parsing utilities
+│   ├── index.ts                                # Main entry point
+│   ├── selenium.index.ts                       # Selenium entry point
+│   └── crunchyroll-toolkit.index.ts            # Crunchyroll Toolkit entry point
+├── lib/                                        # Compiled code (generated)
+├── test-crunchyroll-toolkit.js                 # Main test file
 ├── package.json
 └── tsconfig.json
 ```

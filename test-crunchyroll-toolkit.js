@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 
 /**
- * Test ZenRows complet - Comme test-simple.js mais avec ZenRows
+ * Test Crunchyroll Toolkit complet - Recherche et récupération complète d'épisodes
  * Recherche + Récupération de TOUS les épisodes de TOUTES les saisons
  */
 
-async function testZenRowsEpisodes(input = 'Fire Force') {
+async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
   let scraper;
   
   try {
-    console.log('🚀 Test ZenRows - Épisodes complets');
+    console.log('🚀 Test Crunchyroll Toolkit - Épisodes complets');
     console.log(`🎯 Input: "${input}"`);
     
-    // Import du scraper ZenRows
-    const { createZenRowsCrunchyrollScraper } = require('./lib/zenrows.index');
+    // Import du scraper Crunchyroll Toolkit
+    const { createCrunchyrollToolkitScraper } = require('./lib/crunchyroll-toolkit.index');
     
-    // Création du scraper selon ZenRows (optimisé pour vitesse)
-    scraper = await createZenRowsCrunchyrollScraper({
+    // Création du scraper Crunchyroll Toolkit (optimisé pour vitesse)
+    scraper = await createCrunchyrollToolkitScraper({
       headless: false,
       timeout: 30000
     });
@@ -85,7 +85,7 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
       success: true,
       timestamp: new Date().toISOString(),
       input: input,
-      method: 'zenrows-complete-episodes',
+      method: 'crunchyroll-toolkit-episodes',
       
       anime: {
         id: anime.id,
@@ -115,7 +115,7 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
       summary: {
         totalSeasons: Object.keys(episodesBySeason).length,
         totalEpisodes: episodes.length,
-        scraper: 'zenrows-complete'
+        scraper: 'crunchyroll-toolkit'
       }
     };
 
@@ -129,9 +129,9 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
       success: false,
       timestamp: new Date().toISOString(),
       input: input,
-      method: 'zenrows-complete-episodes',
+      method: 'crunchyroll-toolkit-episodes',
       error: error.message,
-      scraper: 'zenrows-complete'
+      scraper: 'crunchyroll-toolkit'
     };
     
     console.log('\n❌ ERREUR:');
@@ -147,14 +147,14 @@ async function testZenRowsEpisodes(input = 'Fire Force') {
 
 // Utilisation CLI
 const input = process.argv[2] || 'Fire Force';
-testZenRowsEpisodes(input).catch(error => {
+testCrunchyrollToolkitEpisodes(input).catch(error => {
   console.log(JSON.stringify({
     success: false,
     timestamp: new Date().toISOString(),
     input: input,
-    method: 'zenrows-complete-episodes',
+    method: 'crunchyroll-toolkit-episodes',
     error: error.message,
-    scraper: 'zenrows-complete'
+    scraper: 'crunchyroll-toolkit'
   }, null, 2));
   process.exit(1);
 });

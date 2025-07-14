@@ -4,7 +4,7 @@ import { ScraperOptions } from '../types/anime.types';
 import * as path from 'path';
 const UndetectedChrome = require('undetected-chromedriver-js');
 
-export class ZenRowsBrowserManager {
+export class CrunchyrollToolkitBrowserManager {
   private driver?: WebDriver;
   private undetectedChrome?: any;
   private options: ScraperOptions;
@@ -22,7 +22,7 @@ export class ZenRowsBrowserManager {
 
   async initialize(): Promise<void> {
     if (!this.driver) {
-      console.log('🔧 Initialisation ZenRows Method (Selenium + undetected-chromedriver-js)...');
+      console.log('🔧 Initialisation Crunchyroll Toolkit (Selenium + undetected-chromedriver-js)...');
       
       try {
         // Initialiser undetected-chromedriver-js
@@ -51,13 +51,13 @@ export class ZenRowsBrowserManager {
         // Création du driver avec anti-détection
         this.driver = await this.undetectedChrome!.build();
           
-        console.log('✅ ZenRows Method: Driver initialisé avec succès');
+        console.log('✅ Crunchyroll Toolkit: Driver initialisé avec succès');
         
         // Timeout par défaut
         await this.driver!.manage().setTimeouts({ implicit: this.options.timeout });
         
       } catch (error) {
-        console.error('❌ Erreur initialisation ZenRows Method:', error);
+        console.error('❌ Erreur initialisation Crunchyroll Toolkit:', error);
         throw error;
       }
     }
@@ -68,7 +68,7 @@ export class ZenRowsBrowserManager {
       throw new Error('Driver not initialized');
     }
     
-    console.log(`🌐 Navigation ZenRows vers: ${url}`);
+    console.log(`🌐 Navigation Crunchyroll Toolkit vers: ${url}`);
     await this.driver.get(url);
   }
 
@@ -113,7 +113,7 @@ export class ZenRowsBrowserManager {
         await this.driver.quit();
         this.driver = undefined;
         this.undetectedChrome = undefined;
-        console.log('✅ ZenRows Driver fermé');
+        console.log('✅ Crunchyroll Toolkit Driver fermé');
       } catch (error) {
         console.error('⚠️ Erreur fermeture driver:', error);
       }

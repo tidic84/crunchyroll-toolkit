@@ -1,16 +1,16 @@
 import { By, until } from 'selenium-webdriver';
 import { ScraperOptions, ScraperResult, Anime, Episode } from '../types/anime.types';
-import { ZenRowsBrowserManager } from '../utils/zenrows.browser.utils';
+import { CrunchyrollToolkitBrowserManager } from '../utils/crunchyroll-toolkit.browser.utils';
 import { ParserUtils } from '../utils/parser.utils';
 import * as fs from 'fs';
 
 /**
- * Scraper Crunchyroll 2025 - ZenRows hybride avec interception API
+ * Scraper Crunchyroll 2025 - Crunchyroll Toolkit avec interception API
  * Adapté depuis l'ancien code Playwright vers undetected-chrome-driver
- * Combine la robustesse de l'ancien code avec l'anti-détection ZenRows
+ * Combine la robustesse de l'ancien code avec l'anti-détection
  */
-export class ZenRowsCrunchyrollScraper {
-  private browserManager: ZenRowsBrowserManager;
+export class CrunchyrollToolkitScraper {
+  private browserManager: CrunchyrollToolkitBrowserManager;
   private baseUrl = 'https://www.crunchyroll.com';
 
   constructor(options: ScraperOptions = {}) {
@@ -22,12 +22,12 @@ export class ZenRowsCrunchyrollScraper {
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       ...options
     };
-    this.browserManager = new ZenRowsBrowserManager(enhancedOptions);
+    this.browserManager = new CrunchyrollToolkitBrowserManager(enhancedOptions);
   }
 
   async initialize(): Promise<void> {
     await this.browserManager.initialize();
-    console.log('🚀 Scraper ZenRows Enhanced initialisé - Mode DOM optimisé');
+    console.log('🚀 Scraper Crunchyroll Toolkit initialisé - Mode DOM optimisé');
   }
 
 
@@ -51,7 +51,7 @@ export class ZenRowsCrunchyrollScraper {
     try {
       const searchUrl = `${this.baseUrl}/fr/search?q=${encodeURIComponent(query)}`;
       
-      console.log(`🔍 Recherche Crunchyroll ZenRows: "${query}"`);
+      console.log(`🔍 Recherche Crunchyroll Toolkit: "${query}"`);
       
       // Navigation intelligente
       const navigationSuccess = await this.smartNavigation(searchUrl);
@@ -713,7 +713,7 @@ export class ZenRowsCrunchyrollScraper {
       const animeId = this.extractSeriesIdFromUrl(fullUrl);
       const animeSlug = this.extractSeriesSlugFromUrl(fullUrl);
       
-      console.log(`📺 Enhanced Episodes ZenRows: ${fullUrl}`);
+      console.log(`📺 Enhanced Episodes Crunchyroll Toolkit: ${fullUrl}`);
       
       // Pour Fire Force, essayer de récupérer toutes les saisons
       if (animeSlug.includes('fire-force')) {
