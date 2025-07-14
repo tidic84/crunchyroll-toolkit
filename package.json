@@ -30,7 +30,8 @@
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
     "playwright": "^1.53.2",
-    "selenium-webdriver": "^4.33.0"
+    "selenium-webdriver": "^4.33.0",
+    "undetected-chromedriver-js": "^1.1.6"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",

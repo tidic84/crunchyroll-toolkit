@@ -2,9 +2,11 @@ import { WebDriver, Builder } from 'selenium-webdriver';
 import * as chrome from 'selenium-webdriver/chrome';
 import { ScraperOptions } from '../types/anime.types';
 import * as path from 'path';
+const UndetectedChrome = require('undetected-chromedriver-js');
 
 export class ZenRowsBrowserManager {
   private driver?: WebDriver;
+  private undetectedChrome?: any;
   private options: ScraperOptions;
 
   constructor(options: ScraperOptions = {}) {
@@ -20,50 +22,39 @@ export class ZenRowsBrowserManager {
 
   async initialize(): Promise<void> {
     if (!this.driver) {
-      console.log('🔧 Initialisation ZenRows Method (Selenium + undetected-chromedriver)...');
-      
-      // Méthode ZenRows exacte
-      const chromeDriverPath = path.resolve('./undetected_chromedriver_executable');
-      console.log(`🎯 Chemin undetected-chromedriver: ${chromeDriverPath}`);
-      
-      // Configurer Chrome Options selon ZenRows
-      const chromeOptions = new chrome.Options();
-      
-      // Chemin Chrome (adapté pour Linux)
-      const chromeExePath = '/usr/bin/google-chrome-stable';
-      chromeOptions.setChromeBinaryPath(chromeExePath);
-      
-      // User agent personnalisé
-      const customUserAgent = this.options.userAgent!;
-      chromeOptions.addArguments(`--user-agent=${customUserAgent}`);
-      
-      // Mode headless optionnel
-      if (this.options.headless) {
-        chromeOptions.addArguments('--headless');
-        console.log('🔇 Mode headless activé');
-      } else {
-        console.log('🖥️ Mode visible activé');
-      }
-      
-      // Arguments anti-détection supplémentaires
-      chromeOptions.addArguments('--no-sandbox');
-      chromeOptions.addArguments('--disable-dev-shm-usage');
-      chromeOptions.addArguments('--disable-blink-features=AutomationControlled');
-      chromeOptions.addArguments('--exclude-switches=enable-automation');
-      chromeOptions.addArguments('--window-size=1366,768');
+      console.log('🔧 Initialisation ZenRows Method (Selenium + undetected-chromedriver-js)...');
       
       try {
-        // Création du driver selon la méthode ZenRows EXACTE
-        this.driver = await new Builder()
-          .forBrowser('chrome')
-          .setChromeOptions(chromeOptions)
-          .setChromeService(new chrome.ServiceBuilder(chromeDriverPath))
-          .build();
+        // Initialiser undetected-chromedriver-js
+        this.undetectedChrome = new UndetectedChrome({
+          headless: this.options.headless,
+          userAgent: this.options.userAgent,
+          executablePath: '/usr/bin/google-chrome-stable',
+          args: [
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+            '--exclude-switches=enable-automation',
+            '--window-size=1366,768'
+          ]
+        });
+        
+        console.log('🎯 Création du driver avec undetected-chromedriver-js...');
+        
+        // Mode headless optionnel
+        if (this.options.headless) {
+          console.log('🔇 Mode headless activé');
+        } else {
+          console.log('🖥️ Mode visible activé');
+        }
+        
+        // Création du driver avec anti-détection
+        this.driver = await this.undetectedChrome!.build();
           
         console.log('✅ ZenRows Method: Driver initialisé avec succès');
         
         // Timeout par défaut
-        await this.driver.manage().setTimeouts({ implicit: this.options.timeout });
+        await this.driver!.manage().setTimeouts({ implicit: this.options.timeout });
         
       } catch (error) {
         console.error('❌ Erreur initialisation ZenRows Method:', error);
@@ -121,6 +112,7 @@ export class ZenRowsBrowserManager {
       try {
         await this.driver.quit();
         this.driver = undefined;
+        this.undetectedChrome = undefined;
         console.log('✅ ZenRows Driver fermé');
       } catch (error) {
         console.error('⚠️ Erreur fermeture driver:', error);
