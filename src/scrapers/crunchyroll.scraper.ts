@@ -23,7 +23,7 @@ export class CrunchyrollScraper {
   constructor(options: ScraperOptions = {}) {
     const enhancedOptions = {
       headless: false,
-      timeout: 60000,
+      timeout: 10000,
       maxRetries: 2,
       locale: 'fr-FR',
       ...options
@@ -100,75 +100,162 @@ export class CrunchyrollScraper {
     // Viewport standard
     await page.setViewportSize({ width: 1366, height: 768 });
 
-    // Interception réseau pour capturer les appels API
+    // Interception réseau ultra-aggressive pour capturer TOUTES les APIs
     await page.route('**/*', (route: Route) => {
       const url = route.request().url();
+      const method = route.request().method();
       
-      // Permettre tous les appels mais les logger pour analyse
-      if (url.includes('/content/v2') || url.includes('/search') || url.includes('/series')) {
-        console.log(`🌐 API Call intercepté: ${url}`);
+      // Logger TOUS les appels pour debug
+      if (url.includes('crunchyroll.com') && (
+        url.includes('/content/') || 
+        url.includes('/discover/') || 
+        url.includes('/search') || 
+        url.includes('/series') ||
+        url.includes('/cms/') ||
+        url.includes('/objects/') ||
+        url.includes('browse')
+      )) {
+        console.log(`🌐 [${method}] API Call intercepté: ${url}`);
       }
       
-      route.continue();
+      // Modifier les headers pour paraître plus légitime
+      const headers = route.request().headers();
+      headers['Accept'] = 'application/json, text/plain, */*';
+      headers['Accept-Language'] = 'fr-FR,fr;q=0.9,en;q=0.8';
+      headers['Cache-Control'] = 'no-cache';
+      headers['Pragma'] = 'no-cache';
+      headers['Sec-Fetch-Dest'] = 'empty';
+      headers['Sec-Fetch-Mode'] = 'cors';
+      headers['Sec-Fetch-Site'] = 'same-origin';
+      
+      route.continue({ headers });
     });
 
-    // Capturer les réponses API
+    // Capturer TOUTES les réponses API avec logging détaillé
     page.on('response', async (response) => {
       const url = response.url();
+      const status = response.status();
       
-      if ((url.includes('/content/v2') || url.includes('/episodes') || url.includes('/cms/seasons/')) && 
-          response.status() === 200) {
-        try {
-          const contentType = response.headers()['content-type'] || '';
-          if (contentType.includes('application/json')) {
-            const data = await response.json();
-            this.apiResponses.set(url, data);
-            console.log(`📦 API Response stockée: ${url}`);
+      // Logger TOUTES les réponses de Crunchyroll pour debug
+      if (url.includes('crunchyroll.com') && (
+        url.includes('/content/') || 
+        url.includes('/discover/') || 
+        url.includes('/search') || 
+        url.includes('/browse') ||
+        url.includes('/episodes') || 
+        url.includes('/cms/') ||
+        url.includes('/ajax/') ||
+        url.includes('/api/')
+      )) {
+        console.log(`📡 Response interceptée: [${status}] ${url}`);
+        
+        if (status === 200) {
+          try {
+            const contentType = response.headers()['content-type'] || '';
+            console.log(`📄 Content-Type: ${contentType}`);
             
-            // Log spécial pour les APIs d'épisodes
-            if (url.includes('/episodes')) {
-              const episodeCount = data?.data?.length || 0;
-              console.log(`📈 Episodes API: ${episodeCount} épisodes trouvés`);
+            if (contentType.includes('application/json')) {
+              const data = await response.json();
+              this.apiResponses.set(url, data);
+              console.log(`✅ JSON Response stockée: ${url}`);
+              
+              // Debug: afficher la structure des données
+              if (data && typeof data === 'object') {
+                const keys = Object.keys(data);
+                console.log(`🔍 Structure JSON: ${keys.join(', ')}`);
+                
+                if (data.data && Array.isArray(data.data)) {
+                  console.log(`📊 Nombre d'items: ${data.data.length}`);
+                } else if (data.items && Array.isArray(data.items)) {
+                  console.log(`📊 Nombre d'items: ${data.items.length}`);
+                }
+              }
+            } else {
+              console.log(`⚠️ Response non-JSON: ${contentType}`);
             }
-          } else {
-            if (url.includes('/episodes')) {
-              console.log(`⚠️ API Response non-JSON: ${url} (Content-Type: ${contentType})`);
-            }
+          } catch (error) {
+            console.log(`❌ Erreur parsing response ${url}: ${error}`);
           }
-        } catch (error) {
-          if (url.includes('/episodes')) {
-            console.log(`❌ Erreur parsing JSON pour: ${url} - ${error}`);
-          }
-        }
-      } else {
-        if (url.includes('/episodes')) {
-          console.log(`⚠️ API Response problématique: ${url} (Status: ${response.status()})`);
+        } else if (status === 401) {
+          console.log(`🔐 Erreur 401 (Non autorisé): ${url}`);
+        } else if (status === 403) {
+          console.log(`🚫 Erreur 403 (Interdit): ${url}`);
+        } else if (status === 404) {
+          console.log(`❓ Erreur 404 (Non trouvé): ${url}`);
+        } else if (status >= 400) {
+          console.log(`⚠️ Erreur ${status}: ${url}`);
         }
       }
     });
   }
 
   /**
-   * Stratégie de contournement progressive
+   * Stratégie de contournement ultra-agressive avec session légitime
    */
   private async smartNavigation(page: Page, targetUrl: string): Promise<boolean> {
-    console.log(`🎯 Navigation intelligente vers: ${targetUrl}`);
+    const startTime = Date.now();
+    console.log(`🎯 Navigation intelligente STEALTH vers: ${targetUrl}`);
     
-    // Stratégie 1: Navigation directe simple
+    // OPTIMISATION: Vérifier si on est déjà sur Crunchyroll
+    const currentUrl = page.url();
+    console.log(`🔍 URL actuelle: ${currentUrl}`);
+    console.log(`🎯 URL cible: ${targetUrl}`);
+    
+    if (currentUrl.includes('crunchyroll.com') && !currentUrl.includes('cloudflare') && !currentUrl.includes('challenge')) {
+      console.log('⚡ Déjà sur Crunchyroll, navigation directe rapide...');
+      try {
+        const fastStartTime = Date.now();
+        await page.goto(targetUrl, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 8000 
+        });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const fastEndTime = Date.now();
+        console.log(`✅ Navigation rapide réussie en ${fastEndTime - fastStartTime}ms!`);
+        return true;
+      } catch (error) {
+        console.log('⚠️ Navigation rapide échouée, fallback vers méthode complète');
+      }
+    } else {
+      console.log(`⚠️ Pas sur Crunchyroll ou problème détecté, navigation complète nécessaire`);
+    }
+    
+    // Pré-navigation: masquage ultra-avancé (désactivé pour performance)
+    // await this.setupSuperStealth(page);
+    
+    // ÉTAPE CRITIQUE: Établir d'abord une session légitime (désactivée pour performance)
+    // await this.establishLegitimateSession(page);
+    
+    // Stratégie 1: Navigation directe avec session établie
     try {
-      console.log('📍 Tentative 1: Navigation directe...');
+      console.log('📍 Tentative 1: Navigation directe avec session légitime...');
+      
+      // Attendre random pour éviter pattern recognition
+      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 2000));
+      
       await page.goto(targetUrl, { 
         waitUntil: 'domcontentloaded',
-        timeout: 30000 
+        timeout: 8000 
       });
 
-      // Attente courte pour voir si ça passe
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Attente réduite et moins variable
+      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
 
       const hasChallenge = await this.detectCloudflareChallenge(page);
       if (!hasChallenge) {
-        console.log('✅ Navigation directe réussie!');
+        const endTime = Date.now();
+        console.log(`✅ Navigation directe avec session légitime réussie en ${endTime - startTime}ms!`);
         return true;
+      } else {
+        console.log('🛡️ Challenge détecté, attente résolution...');
+        // Attendre que le challenge se résolve
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const stillHasChallenge = await this.detectCloudflareChallenge(page);
+        if (!stillHasChallenge) {
+          console.log('✅ Challenge résolu automatiquement!');
+          return true;
+        }
       }
     } catch (error) {
       console.log('⚠️ Navigation directe échouée:', (error as Error).message);
@@ -179,25 +266,26 @@ export class CrunchyrollScraper {
       console.log('📍 Tentative 2: Via page d\'accueil...');
       await page.goto(this.baseUrl, { 
         waitUntil: 'domcontentloaded',
-        timeout: 20000 
+        timeout: 8000 
       });
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Navigation interne (moins détectable)
       if (targetUrl.includes('/search')) {
         const query = new URL(targetUrl).searchParams.get('q') || '';
-        const searchInput = await page.waitForSelector('input[type="search"], input[placeholder*="search"]', { timeout: 10000 });
+        const searchInput = await page.waitForSelector('input[type="search"], input[placeholder*="search"]', { timeout: 5000 });
         
         if (searchInput) {
           await searchInput.click();
           await searchInput.fill(query);
           await page.keyboard.press('Enter');
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           const hasChallenge = await this.detectCloudflareChallenge(page);
           if (!hasChallenge) {
-            console.log('✅ Navigation via recherche réussie!');
+            const endTime = Date.now();
+            console.log(`✅ Navigation via recherche réussie en ${endTime - startTime}ms!`);
             return true;
           }
         }
@@ -208,7 +296,10 @@ export class CrunchyrollScraper {
 
     // Stratégie 3: Approche API alternative
     console.log('📍 Tentative 3: Approche API alternative...');
-    return await this.tryApiApproach(page, targetUrl);
+    const result = await this.tryApiApproach(page, targetUrl);
+    const endTime = Date.now();
+    console.log(`⏱️ smartNavigation terminée en ${endTime - startTime}ms`);
+    return result;
   }
 
   /**
@@ -310,12 +401,49 @@ export class CrunchyrollScraper {
         throw new Error('Navigation vers la page de recherche échouée');
       }
 
-      // Attendre que les APIs se chargent
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Simulation comportement utilisateur réel (désactivée pour performance)
+      // await this.simulateHumanBehavior(page);
+      
+      // Attendre que les APIs se chargent avec timeout intelligent
+      console.log('⏳ Attente chargement APIs...');
+      let apiFound = false;
+      let waitTime = 0;
+      const maxWait = 3000; // 3 secondes max
+      
+      while (!apiFound && waitTime < maxWait) {
+        // Vérifier si on a intercepté des APIs de recherche
+        const searchApis = Array.from(this.apiResponses.keys()).filter(url => 
+          url.includes('/discover/search') || 
+          url.includes('/search') || 
+          url.includes('/browse')
+        );
+        
+        if (searchApis.length > 0) {
+          console.log(`✅ ${searchApis.length} API(s) de recherche interceptée(s)!`);
+          apiFound = true;
+          break;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 200));
+        waitTime += 200;
+        
+        // Déclencher APIs supplémentaires à mi-chemin
+        if (waitTime >= 1400) {
+          console.log('🔄 Déclenchement APIs supplémentaires...');
+          await this.triggerAdditionalAPIs(page, query);
+        }
+      }
+      
+      if (!apiFound) {
+        console.log('⚠️ Aucune API interceptée, passage en mode extraction DOM');
+      }
       
       // PRIORITÉ 1: Exploiter les APIs interceptées (données réelles)
       let animes = await this.extractFromInterceptedAPIs(query);
       
+      // DEBUG: Sauvegarder le contenu de la page pour analyse
+      await this.savePageContentForDebug(page, query);
+
       // PRIORITÉ 2: Si pas d'API, extraction DOM ciblée
       if (animes.length === 0) {
         animes = await this.extractAnimesFromSearchPage(page, query);
@@ -577,7 +705,7 @@ export class CrunchyrollScraper {
         // Naviguer vers l'URL de la série pour récupérer les vraies données
         try {
           await page.goto(anime.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           // Extraire les vraies métadonnées
           const realData = await page.evaluate(() => {
@@ -619,7 +747,7 @@ export class CrunchyrollScraper {
     console.log('📄 Extraction depuis page web...');
     
     // Attendre que le contenu se charge
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     return await page.evaluate((searchQuery) => {
       const results: any[] = [];
@@ -764,7 +892,7 @@ export class CrunchyrollScraper {
     console.log('🔍 Recherche dans les appels API interceptés...');
     
     // Attendre un peu pour laisser les appels API se faire
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     // Essayer d'extraire depuis les données déjà chargées via API
     const searchApiResults = await page.evaluate((searchQuery) => {
@@ -1012,14 +1140,14 @@ export class CrunchyrollScraper {
       
       if (navigationSuccess) {
         // Attendre le chargement et essayer de cliquer sur l'onglet épisodes
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         try {
           const episodeTab = await page.waitForSelector('a:has-text("Episodes"), button:has-text("Episodes"), [data-testid*="episodes"]', { timeout: 5000 });
           if (episodeTab) {
             console.log('📺 Clic sur onglet épisodes...');
             await episodeTab.click();
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         } catch {
           console.log('📺 Pas d\'onglet épisodes trouvé, recherche directe...');
@@ -1097,7 +1225,7 @@ export class CrunchyrollScraper {
               if (nextSeasonClicked) {
                 console.log(`✅ Clic ${clickCount} réussi`);
                 // Attendre le chargement de la nouvelle saison
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                await new Promise(resolve => setTimeout(resolve, 500));
               } else {
                 console.log(`❌ Bouton "Saison suivante" non trouvé ou désactivé`);
                 break;
@@ -1161,19 +1289,19 @@ export class CrunchyrollScraper {
                 });
               }, season.id);
               
-              await new Promise(resolve => setTimeout(resolve, 3000));
+              await new Promise(resolve => setTimeout(resolve, 500));
             }
             
             console.log(`✅ Déclenchement API pour saison ${season.number} terminé`);
             
             // Attendre que les APIs d'épisodes se chargent
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Scroll pour activer le lazy loading des épisodes
             await page.evaluate(() => {
               window.scrollTo(0, document.body.scrollHeight);
             });
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             await page.evaluate(() => {
               window.scrollTo(0, 0);
@@ -1181,7 +1309,7 @@ export class CrunchyrollScraper {
             await new Promise(resolve => setTimeout(resolve, 1000));
             
             // Attendre que l'authentification se stabilise
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Forcer le déclenchement de l'API d'épisodes avec authentification appropriée
             for (let attempt = 0; attempt < 3; attempt++) {
@@ -1238,7 +1366,9 @@ export class CrunchyrollScraper {
           // Éliminer les doublons avec les saisons précédentes
           const uniqueEpisodes = validEpisodes.filter(newEp => 
             !allEpisodes.some(existingEp => 
-              existingEp.title === newEp.title && existingEp.episodeNumber === newEp.episodeNumber
+              existingEp.title === newEp.title && 
+              existingEp.episodeNumber === newEp.episodeNumber &&
+              existingEp.seasonNumber === newEp.seasonNumber
             )
           );
           
@@ -1511,7 +1641,7 @@ export class CrunchyrollScraper {
       if (!dropdown) {
         console.log(`⚠️ Aucun dropdown trouvé, scroll et re-recherche...`);
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 3));
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Re-essayer après scroll
         for (const selector of modernDropdownSelectors) {
@@ -1531,7 +1661,7 @@ export class CrunchyrollScraper {
         
         // ÉTAPE 3: Attendre et détecter dynamiquement les options
         console.log(`⏳ Attente ouverture dropdown et détection options...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         const dropdownOptions = await this.detectDropdownOptions(page, season);
         console.log(`🔍 ${dropdownOptions.length} option(s) détectée(s) dans le dropdown`);
@@ -1606,7 +1736,7 @@ export class CrunchyrollScraper {
           
           if (jsResult) {
             console.log(`✅ Changement de saison via JavaScript réussi`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             return true;
           }
         } catch (e) {
@@ -1630,7 +1760,7 @@ export class CrunchyrollScraper {
           console.log(`🎯 Tentative navigation: ${newUrl}`);
           try {
             await page.goto(newUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             console.log(`✅ Navigation URL vers saison ${season.number} réussie`);
             return true;
           } catch (e) {
@@ -1662,7 +1792,7 @@ export class CrunchyrollScraper {
       console.log(`🎯 Recherche API spécifique pour saison ${seasonId}...`);
       
       // Attendre un peu que les APIs se chargent après changement de saison
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Chercher l'API spécifique dans les réponses interceptées
       episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
@@ -1721,7 +1851,7 @@ export class CrunchyrollScraper {
             await page.evaluate(() => {
               window.scrollTo(0, 0);
             });
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Re-chercher après scroll
             episodeApiUrl = Array.from(this.apiResponses.keys()).find((url: string) => 
@@ -1755,8 +1885,8 @@ export class CrunchyrollScraper {
           
           if (targetUrl !== currentUrl) {
             console.log(`🎯 Navigation forcée vers: ${targetUrl}`);
-            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Déclencher manuellement l'API après navigation
             await page.evaluate((seasonId) => {
@@ -1811,7 +1941,7 @@ export class CrunchyrollScraper {
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight / 2);
     });
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     await page.evaluate(() => {
       window.scrollTo(0, 0);
     });
@@ -1865,12 +1995,16 @@ export class CrunchyrollScraper {
         
         title = titleSources.find(t => t && t.length > 2) || `Episode ${episodeList.length + 1}`;
         
+        // Numérotation basée sur la position dans la saison actuelle, pas globale
         let episodeNumber = episodeList.length + 1;
-        const numberMatch = title.match(/(?:Episode|E|Ep)\s*(\d+)/i) || 
-                           href.match(/episode[-_]?(\d+)/i) ||
-                           href.match(/\/(\d+)(?:\/|$)/);
+        
+        // Extraire le numéro d'épisode depuis le titre (format "S1 E1", "Episode 1", etc.)
+        const numberMatch = title.match(/S\d+\s+E(\d+)|(?:Episode|E|Ep)\s*(\d+)/i);
         if (numberMatch) {
-          episodeNumber = parseInt(numberMatch[1], 10);
+          episodeNumber = parseInt(numberMatch[1] || numberMatch[2], 10);
+        } else {
+          // Si pas de numéro dans le titre, utiliser la position séquentielle dans cette saison
+          episodeNumber = episodeList.length + 1;
         }
         
         let thumbnail = '';
@@ -1898,9 +2032,19 @@ export class CrunchyrollScraper {
       });
       
       const sortedEpisodes = episodeList.sort((a, b) => a.episodeNumber - b.episodeNumber);
-      console.log(`🎬 Total épisodes DOM saison ${params.seasonNumber}: ${sortedEpisodes.length}`);
       
-      return sortedEpisodes;
+      // Renumerotez les épisodes séquentiellement pour éviter les gaps et numéros incorrects
+      const renumberedEpisodes = sortedEpisodes.map((episode, index) => ({
+        ...episode,
+        episodeNumber: index + 1,
+        id: episode.id.includes('s' + params.seasonNumber + 'ep') 
+          ? `${params.animeId}-s${params.seasonNumber}ep${index + 1}`
+          : episode.id
+      }));
+      
+      console.log(`🎬 Total épisodes DOM saison ${params.seasonNumber}: ${renumberedEpisodes.length}`);
+      
+      return renumberedEpisodes;
     }, { animeId, seasonNumber });
   }
 
@@ -1920,7 +2064,7 @@ export class CrunchyrollScraper {
             id: item.id || item.guid || `${animeId}-s${seasonNumber || 1}ep${item.episode_number}`,
             animeId: animeId,
             title: item.title || `Episode ${item.episode_number}`,
-            episodeNumber: parseInt(item.episode_number) || episodes.length + 1,
+            episodeNumber: episodes.length + 1,
             seasonNumber: seasonNumber || 1,
             url: `${this.baseUrl}/watch/${item.id}/${item.slug_title || ''}`,
             thumbnail: this.extractThumbnailFromItem(item)
@@ -2134,8 +2278,406 @@ export class CrunchyrollScraper {
         return false;
       }
       
-      return false;
+      // Si l'épisode n'a pas déclenché de pattern suspect et a le bon numéro de saison, l'accepter
+      return true;
     });
+  }
+
+  /**
+   * Configuration stealth ultra-avancée par page
+   */
+  private async setupSuperStealth(page: Page): Promise<void> {
+    try {
+      console.log('🥷 Activation mode SUPER STEALTH...');
+      
+      // Script de masquage encore plus avancé
+      await page.addInitScript(() => {
+        // Masquer toutes traces d'automation possibles
+        const descriptorOverrides = {
+          webdriver: { get: () => undefined },
+          __driver_evaluate: { get: () => undefined },
+          __webdriver_evaluate: { get: () => undefined },
+          __selenium_evaluate: { get: () => undefined },
+          __fxdriver_evaluate: { get: () => undefined },
+          __driver_unwrapped: { get: () => undefined },
+          __webdriver_unwrapped: { get: () => undefined },
+          __selenium_unwrapped: { get: () => undefined },
+          __fxdriver_unwrapped: { get: () => undefined },
+          __webdriver_script_func: { get: () => undefined },
+          __webdriver_script_fn: { get: () => undefined }
+        };
+        
+        Object.keys(descriptorOverrides).forEach(key => {
+          if (key in navigator) {
+            Object.defineProperty(navigator, key, {
+              ...descriptorOverrides[key as keyof typeof descriptorOverrides],
+              configurable: true
+            });
+          }
+        });
+        
+        // Override des méthodes de détection courantes
+        (window.navigator as any).chrome = {
+          runtime: {},
+          loadTimes: function() { return null; },
+          csi: function() { return null; },
+          app: {
+            isInstalled: false,
+            InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+            RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
+          }
+        };
+        
+        // Masquer Playwright spécifiquement
+        delete (window as any).playwright;
+        delete (window as any).__playwright;
+        delete (window as any).__pw_manual;
+        
+        // Override de performance.now() pour être plus humain
+        const originalPerformanceNow = performance.now;
+        let fakeTimeOffset = Math.random() * 1000;
+        performance.now = function() {
+          fakeTimeOffset += Math.random() * 0.1;
+          return originalPerformanceNow.call(this) + fakeTimeOffset;
+        };
+        
+        // Fake des événements souris/clavier
+        ['mouse', 'keyboard'].forEach(device => {
+          (window as any)[`__${device}_events__`] = [];
+        });
+      });
+      
+      // Headers ultra-réalistes
+      await page.setExtraHTTPHeaders({
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'max-age=0',
+        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Linux"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      });
+      
+    } catch (error) {
+      console.log('⚠️ Erreur setup super stealth:', error);
+    }
+  }
+
+  /**
+   * Simule un comportement humain ultra-réaliste pour déclencher les APIs
+   */
+  private async simulateHumanBehavior(page: Page): Promise<void> {
+    try {
+      console.log('🤖 Simulation comportement humain ultra-réaliste...');
+      
+      // 1. Mouvement initial de souris naturel
+      const startX = 100 + Math.random() * 200;
+      const startY = 100 + Math.random() * 200;
+      await page.mouse.move(startX, startY);
+      await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 500));
+      
+      // 2. Séquence de scrolls graduels avec pauses (comme un humain)
+      const scrollSteps = [0, 150, 300, 500, 800, 400, 0];
+      for (let i = 0; i < scrollSteps.length; i++) {
+        await page.evaluate((y) => {
+          window.scrollTo({ top: y, behavior: 'smooth' });
+        }, scrollSteps[i]);
+        
+        // Pause variable entre scrolls
+        await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1500));
+        
+        // Mouvement de souris pendant le scroll
+        await page.mouse.move(
+          200 + Math.random() * 800, 
+          150 + Math.random() * 400
+        );
+        
+        // Déclencher hover sur des éléments pour simuler navigation
+        if (i === 2 || i === 4) {
+          try {
+            await page.hover('a, button, img', { timeout: 2000 });
+          } catch {}
+        }
+      }
+      
+      // 3. Interaction avec la barre de recherche si présente
+      try {
+        const searchInput = await page.waitForSelector('input[type="search"], input[placeholder*="search"], input[placeholder*="Search"]', { timeout: 3000 });
+        if (searchInput) {
+          console.log('🔍 Interaction avec barre de recherche...');
+          await searchInput.click();
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await page.evaluate(() => {
+            const input = document.querySelector('input[type="search"], input[placeholder*="search"], input[placeholder*="Search"]') as HTMLInputElement;
+            if (input) input.blur();
+          });
+        }
+      } catch {
+        // Pas de barre de recherche, continuer
+      }
+      
+      // 4. Déclenchement manuel des APIs critiques
+      console.log('⚡ Déclenchement manuel des APIs de recherche...');
+      await page.evaluate(() => {
+        // Essayer de déclencher les APIs de recherche manuellement
+        const searchParams = new URLSearchParams(window.location.search);
+        const query = searchParams.get('q') || 'naruto';
+        
+        // APIs connues de Crunchyroll
+        const apiEndpoints = [
+          `/content/v2/discover/search?q=${encodeURIComponent(query)}&n=20&type=series&locale=fr-FR`,
+          `/content/v2/discover/browse?q=${encodeURIComponent(query)}&locale=fr-FR`,
+          `/ajax/search?q=${encodeURIComponent(query)}&type=series`,
+          `/content/v2/cms/search?q=${encodeURIComponent(query)}&locale=fr-FR`
+        ];
+        
+        apiEndpoints.forEach(endpoint => {
+          fetch(endpoint, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Referer': window.location.href
+            }
+          }).then(response => {
+            console.log(`API Response ${endpoint}: ${response.status}`);
+          }).catch(error => {
+            console.log(`API Error ${endpoint}: ${error}`);
+          });
+        });
+      });
+      
+      // 5. Attente pour laisser les APIs se déclencher
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 6. Défilement final pour déclencher lazy loading
+      await page.evaluate(() => {
+        // Scroll jusqu'en bas pour déclencher tous les lazy loadings
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      });
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 7. Retour en position de lecture
+      await page.evaluate(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log('✅ Simulation comportement humain terminée');
+      
+    } catch (error) {
+      console.log('⚠️ Erreur simulation comportement:', error);
+    }
+  }
+
+  /**
+   * Établit une session légitime en naviguant comme un vrai utilisateur
+   */
+  private async establishLegitimateSession(page: Page): Promise<void> {
+    try {
+      console.log('🔐 Établissement session légitime...');
+      
+      // 1. Aller d'abord sur la page d'accueil pour établir la session
+      console.log('🏠 Navigation vers page d\'accueil...');
+      await page.goto(this.baseUrl, { 
+        waitUntil: 'networkidle',
+        timeout: 30000 
+      });
+      
+      // 2. Attendre et simuler navigation humaine
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 3. Faire défiler la page pour déclencher les APIs légitimes
+      await page.evaluate(() => {
+        window.scrollTo({ top: 300, behavior: 'smooth' });
+      });
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 4. Hover sur des éléments pour paraître humain
+      try {
+        await page.hover('a[href*="/series/"], img, .card', { timeout: 3000 });
+      } catch {}
+      
+      // 5. Récupérer les cookies et tokens établis
+      const cookies = await page.context().cookies();
+      console.log(`🍪 ${cookies.length} cookies établis`);
+      
+      // 6. Vérifier si des APIs légitimes ont été appelées
+      const legitimateAPIs = Array.from(this.apiResponses.keys()).filter(url => 
+        !url.includes('search') && (
+          url.includes('/content/v2/') || 
+          url.includes('/discover/') ||
+          url.includes('/cms/')
+        )
+      );
+      
+      if (legitimateAPIs.length > 0) {
+        console.log(`✅ Session légitime établie avec ${legitimateAPIs.length} API(s) légitimes`);
+      } else {
+        console.log('⚠️ Aucune API légitime détectée, navigation étendue...');
+        
+        // Navigation étendue pour déclencher plus d'APIs
+        await page.evaluate(() => {
+          window.scrollTo({ top: document.body.scrollHeight / 2, behavior: 'smooth' });
+        });
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Essayer de cliquer sur des liens populaires
+        try {
+          const popularLink = await page.waitForSelector('a[href*="/series/"], .browse-card a', { timeout: 5000 });
+          if (popularLink) {
+            await popularLink.hover();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch {}
+      }
+      
+      // 7. Retour en haut pour préparer la navigation suivante
+      await page.evaluate(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log('✅ Session légitime établie');
+      
+    } catch (error) {
+      console.log('⚠️ Erreur établissement session:', error);
+    }
+  }
+
+  /**
+   * Déclenche des APIs supplémentaires pour forcer l'interception
+   */
+  private async triggerAdditionalAPIs(page: Page, query: string): Promise<void> {
+    try {
+      console.log('🚀 Déclenchement forcé d\'APIs supplémentaires...');
+      
+      await page.evaluate((searchQuery) => {
+        const encodedQuery = encodeURIComponent(searchQuery);
+        
+        // Liste exhaustive d'endpoints Crunchyroll possibles
+        const endpoints = [
+          `/content/v2/discover/search?q=${encodedQuery}&n=20&type=series&locale=fr-FR`,
+          `/content/v2/discover/browse?q=${encodedQuery}&type=series&locale=fr-FR`,
+          `/content/v2/discover/search?q=${encodedQuery}&locale=fr-FR`,
+          `/content/v2/cms/search?q=${encodedQuery}&locale=fr-FR`,
+          `/content/v2/discover?q=${encodedQuery}&type=series`,
+          `/api/search?q=${encodedQuery}&type=anime`,
+          `/ajax/search?q=${encodedQuery}`,
+          `/search/auto_complete?query=${encodedQuery}`,
+          `/content/v1/search?q=${encodedQuery}`,
+          `/discover/search?q=${encodedQuery}&series=true`
+        ];
+        
+        // Headers ultra-réalistes
+        const headers = {
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+          'Cache-Control': 'no-cache',
+          'Content-Type': 'application/json',
+          'Pragma': 'no-cache',
+          'Referer': window.location.href,
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin',
+          'X-Requested-With': 'XMLHttpRequest',
+          'User-Agent': navigator.userAgent
+        };
+        
+        // Lancer tous les appels en parallèle
+        endpoints.forEach((endpoint, index) => {
+          setTimeout(() => {
+            fetch(endpoint, {
+              method: 'GET',
+              credentials: 'include',
+              headers: headers
+            }).then(response => {
+              console.log(`🎯 API forcée [${index + 1}/${endpoints.length}] ${endpoint}: Status ${response.status}`);
+              if (response.ok) {
+                return response.json();
+              }
+            }).then(data => {
+              if (data) {
+                console.log(`📦 Données reçues pour ${endpoint}:`, Object.keys(data));
+              }
+            }).catch(error => {
+              console.log(`❌ Erreur API ${endpoint}:`, error.message);
+            });
+          }, index * 200); // Étalement des appels
+        });
+        
+      }, query);
+      
+      // Attendre que les appels se terminent
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+    } catch (error) {
+      console.log('⚠️ Erreur déclenchement APIs:', error);
+    }
+  }
+
+  /**
+   * Sauvegarde le contenu de la page pour debug
+   */
+  private async savePageContentForDebug(page: Page, query: string): Promise<void> {
+    try {
+      console.log('💾 Sauvegarde contenu page pour debug...');
+      
+      // Obtenir le contenu HTML complet
+      const htmlContent = await page.content();
+      
+      // Obtenir l'URL actuelle
+      const currentUrl = page.url();
+      
+      // Obtenir le titre de la page
+      const pageTitle = await page.title();
+      
+      // Créer le nom de fichier avec timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `/tmp/crunchyroll-debug-${query.replace(/[^a-zA-Z0-9]/g, '_')}-${timestamp}.html`;
+      
+      // Créer le contenu debug avec métadonnées
+      const debugContent = `<!--
+=== DEBUG CRUNCHYROLL SCRAPER ===
+Query: ${query}
+URL: ${currentUrl}
+Page Title: ${pageTitle}
+Timestamp: ${new Date().toISOString()}
+User Agent: ${await page.evaluate(() => navigator.userAgent)}
+Cookies: ${JSON.stringify(await page.context().cookies(), null, 2)}
+==========================================
+-->
+${htmlContent}`;
+      
+      // Sauvegarder le fichier
+      const fs = require('fs');
+      fs.writeFileSync(filename, debugContent, 'utf8');
+      
+      console.log(`✅ Page sauvegardée: ${filename}`);
+      console.log(`📄 Titre: "${pageTitle}"`);
+      console.log(`🔗 URL: ${currentUrl}`);
+      console.log(`📏 Taille HTML: ${Math.round(htmlContent.length / 1024)}KB`);
+      
+      // Analyse rapide du contenu
+      const hasResults = htmlContent.includes('series') || htmlContent.includes('anime') || htmlContent.includes('episode');
+      const hasChallenge = htmlContent.includes('challenge') || htmlContent.includes('cloudflare') || htmlContent.includes('checking');
+      const hasError = htmlContent.includes('error') || htmlContent.includes('404') || htmlContent.includes('403');
+      
+      console.log(`🔍 Analyse contenu:`);
+      console.log(`   - Résultats potentiels: ${hasResults ? '✅' : '❌'}`);
+      console.log(`   - Challenge détecté: ${hasChallenge ? '⚠️' : '✅'}`);
+      console.log(`   - Erreurs détectées: ${hasError ? '⚠️' : '✅'}`);
+      
+    } catch (error) {
+      console.log('⚠️ Erreur sauvegarde debug:', error);
+    }
   }
 
   async close(): Promise<void> {
