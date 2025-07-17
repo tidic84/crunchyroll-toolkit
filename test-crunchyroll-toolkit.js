@@ -9,8 +9,8 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
   let scraper;
   
   try {
-    console.log('🚀 Test Crunchyroll Toolkit - Épisodes complets');
-    console.log(`🎯 Input: "${input}"`);
+    console.log('Test Crunchyroll Toolkit - Épisodes complets');
+    console.log(`Input: "${input}"`);
     
     // Import du scraper Crunchyroll Toolkit
     const { createCrunchyrollToolkitScraper } = require('./lib/crunchyroll-toolkit.index');
@@ -26,20 +26,27 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
     let anime, episodes;
 
     if (isUrl) {
-      console.log('🔗 Mode URL - Récupération directe');
+      console.log('Mode URL - Récupération directe');
       
-      // Récupération directe depuis l'URL
-      const detailsResult = await scraper.getAnimeDetails(input);
-      if (!detailsResult.success) throw new Error(`Erreur détails: ${detailsResult.error}`);
-      anime = detailsResult.data;
+      // Extraire les informations depuis l'URL
+      const urlMatch = input.match(/\/series\/([A-Z0-9]+)\/([^/?]+)/);
+      if (!urlMatch) throw new Error('URL invalide');
+      
+      anime = {
+        id: urlMatch[1],
+        title: urlMatch[2].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        url: input,
+        releaseYear: null,
+        episodeCount: null
+      };
 
-      console.log('📺 Récupération des épisodes...');
+      console.log('Récupération des épisodes...');
       const episodesResult = await scraper.getEpisodes(input);
       if (!episodesResult.success) throw new Error(`Erreur épisodes: ${episodesResult.error}`);
       episodes = episodesResult.data;
       
     } else {
-      console.log('🔍 Mode recherche par titre');
+      console.log('Mode recherche par titre');
       
       // Recherche par titre
       const searchResult = await scraper.searchAnime(input);
@@ -47,9 +54,9 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
         throw new Error(`Aucun anime trouvé pour: ${input}`);
       }
       anime = searchResult.data[0];
-      console.log(`✅ Trouvé: ${anime.title}`);
+      console.log(`Trouvé: ${anime.title}`);
 
-      console.log('📺 Récupération des épisodes...');
+      console.log('Récupération des épisodes...');
       const episodesResult = await scraper.getEpisodes(anime.url);
       if (!episodesResult.success) throw new Error(`Erreur épisodes: ${episodesResult.error}`);
       episodes = episodesResult.data;
@@ -60,7 +67,7 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
       }
     }
 
-    console.log(`📊 Total épisodes récupérés: ${episodes.length}`);
+    console.log(`Total épisodes récupérés: ${episodes.length}`);
 
     // Organisation des épisodes par saison (comme dans test-simple.js)
     const episodesBySeason = {};
@@ -72,12 +79,12 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
       episodesBySeason[season].push(ep);
     });
 
-    console.log(`📈 Saisons trouvées: ${Object.keys(episodesBySeason).length}`);
+    console.log(`Saisons trouvées: ${Object.keys(episodesBySeason).length}`);
 
     // Affichage du résumé par saison
     Object.keys(episodesBySeason).sort((a, b) => parseInt(a) - parseInt(b)).forEach(seasonNum => {
       const seasonEpisodes = episodesBySeason[seasonNum];
-      console.log(`  🎬 Saison ${seasonNum}: ${seasonEpisodes.length} épisodes`);
+      console.log(`  Saison ${seasonNum}: ${seasonEpisodes.length} épisodes`);
     });
 
     // Construction du JSON de sortie (structure identique à test-simple.js)
@@ -120,7 +127,7 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
     };
 
     // Sortie JSON finale
-    console.log('\n📋 RÉSULTAT FINAL:');
+    console.log('\nRÉSULTAT FINAL:');
     console.log(JSON.stringify(result, null, 2));
 
   } catch (error) {
@@ -134,12 +141,12 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
       scraper: 'crunchyroll-toolkit'
     };
     
-    console.log('\n❌ ERREUR:');
+    console.log('\nERREUR:');
     console.log(JSON.stringify(errorResult, null, 2));
     process.exit(1);
   } finally {
     if (scraper) {
-      console.log('\n🧹 Fermeture scraper...');
+      console.log('\nFermeture scraper...');
       await scraper.close();
     }
   }

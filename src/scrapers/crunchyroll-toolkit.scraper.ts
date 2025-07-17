@@ -95,8 +95,8 @@ export class CrunchyrollToolkitScraper {
       
       console.log(`🎯 Résultats filtrés: ${animes.length} série(s), meilleure pertinence: ${bestRelevance.toFixed(2)}`);
       
-      // Si aucun résultat vraiment pertinent (< 0.15), essayer la recherche spécifique
-      if (animes.length === 0 || bestRelevance < 0.15) {
+      // Si aucun résultat vraiment pertinent (< 0.05), essayer la recherche spécifique
+      if (animes.length === 0 || bestRelevance < 0.05) {
         console.log('⚠️ Résultats non pertinents, recherche spécifique...');
         const specificResults = await this.searchSpecificAnime(query);
         
@@ -427,18 +427,24 @@ export class CrunchyrollToolkitScraper {
           seriesCount++;
         }
         
-        // Chercher des correspondances de titre
+        // Chercher des correspondances de titre avec plusieurs stratégies
         const searchText = text + ' ' + ariaLabel + ' ' + title;
-        if (searchText.includes(queryLower) || 
-            searchText.includes('mynoghra') || 
-            searchText.includes('mino') ||
-            text.includes(queryLower)) {
+        const isDirectMatch = searchText.includes(queryLower) || text.includes(queryLower);
+        
+        // Nouvelle stratégie : recherche par mots-clés
+        const queryWords = queryLower.split(' ').filter(word => word.length > 2);
+        const hasWordMatch = queryWords.some(word => 
+          searchText.includes(word) || text.includes(word)
+        );
+        
+        if (isDirectMatch || hasWordMatch) {
           potentialMatches++;
           console.log('🎯 CORRESPONDANCE POTENTIELLE ' + potentialMatches + ':');
           console.log('  URL: ' + href);
           console.log('  Texte: "' + link.textContent?.trim() + '"');
           console.log('  Aria-label: "' + link.getAttribute('aria-label') + '"');
           console.log('  Title: "' + link.getAttribute('title') + '"');
+          console.log('  Match type: ' + (isDirectMatch ? 'direct' : 'word'));
           
           // Si c'est un lien série ou watch, l'ajouter
           if (href.includes('/series/') || href.includes('/watch/')) {
@@ -482,7 +488,7 @@ export class CrunchyrollToolkitScraper {
         console.log('🔍 Recherche dans le HTML brut...');
         const htmlContent = document.documentElement.innerHTML.toLowerCase();
         
-        if (htmlContent.includes(queryLower) || htmlContent.includes('mynoghra')) {
+        if (htmlContent.includes(queryLower)) {
           console.log('✅ "' + queryLower + '" trouvé dans le HTML de la page');
           
           // Essayer d'extraire des liens depuis le HTML
@@ -516,40 +522,74 @@ export class CrunchyrollToolkitScraper {
    * Recherche spécifique pour des animés connus avec URLs directes
    */
   private async searchSpecificAnime(query: string): Promise<any[]> {
-    console.log('🎯 Recherche spécifique pour animé connu...');
+    console.log('🎯 Recherche spécifique activée pour:', query);
     
-    const queryLower = query.toLowerCase();
-    
-    // Base de données d'animés connus avec leurs URLs réelles Crunchyroll
-    const knownAnimes = [
-      {
-        keywords: ['fire force', 'enen no shouboutai'],
-        id: 'GYQWNXPZY',
-        title: 'Fire Force',
-        url: 'https://www.crunchyroll.com/fr/series/GYQWNXPZY/fire-force'
-      },
-      {
-        keywords: ['mynoghra', 'apocalypse bringer', 'world conquest'],
-        id: 'G1XHJV0M7',
-        title: 'Apocalypse Bringer Mynoghra: World Conquest Starts with the Civilization of Ruin',
-        url: 'https://www.crunchyroll.com/fr/series/G1XHJV0M7/apocalypse-bringer-mynoghra-world-conquest-starts-with-the-civilization-of-ruin'
-      }
-    ];
-    
-    // Chercher correspondance
-    for (const anime of knownAnimes) {
-      const matches = anime.keywords.some(keyword => queryLower.includes(keyword));
+    try {
+      // Essayer la méthode alternative si la recherche normale échoue
+      const alternativeResult = await this.searchAnimeAlternative(query);
       
-      if (matches) {
-        console.log(`✅ Animé connu trouvé: ${anime.title}`);
-        
-        return [{
-          id: anime.id,
-          title: anime.title,
-          url: anime.url,
-          type: 'series'
-        }];
+      if (alternativeResult.success && alternativeResult.data && alternativeResult.data.length > 0) {
+        console.log('✅ Recherche spécifique réussie via méthode alternative');
+        return alternativeResult.data;
       }
+      
+      // Si ça échoue aussi, essayer de chercher directement dans les pages populaires
+      const driver = await this.browserManager.getDriver();
+      
+      // Essayer plusieurs pages pour trouver l'anime
+      const searchPages = [
+        '/fr/videos/popular',
+        '/fr/browse/anime',
+        '/fr/browse'
+      ];
+      
+      for (const page of searchPages) {
+        try {
+          console.log(`🔍 Recherche spécifique dans: ${page}`);
+          await this.browserManager.navigateTo(`${this.baseUrl}${page}`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const results = await driver.executeScript(`
+            const results = [];
+            const query = '${query.toLowerCase()}';
+            
+            // Chercher tous les liens de séries
+            const seriesLinks = document.querySelectorAll('a[href*="/series/"]');
+            
+            for (const link of seriesLinks) {
+              const title = link.textContent?.trim() || '';
+              const href = link.href;
+              
+              if (title && href && title.toLowerCase().includes(query)) {
+                results.push({
+                  id: href.split('/series/')[1]?.split('/')[0] || '',
+                  title: title,
+                  url: href,
+                  thumbnail: undefined,
+                  description: undefined,
+                  genres: [],
+                  releaseYear: undefined,
+                  rating: undefined,
+                  episodeCount: undefined
+                });
+              }
+            }
+            
+            return results;
+          `);
+          
+          if (results && (results as any[]).length > 0) {
+            console.log(`✅ Trouvé ${(results as any[]).length} résultats dans ${page}`);
+            return results as any[];
+          }
+          
+        } catch (error) {
+          console.log(`⚠️ Erreur recherche dans ${page}:`, (error as Error).message);
+        }
+      }
+      
+    } catch (error) {
+      console.log('⚠️ Erreur recherche spécifique:', (error as Error).message);
     }
     
     return [];
@@ -718,6 +758,11 @@ export class CrunchyrollToolkitScraper {
       // Pour Fire Force, essayer de récupérer toutes les saisons
       if (animeSlug.includes('fire-force')) {
         return await this.getFireForceAllSeasons(animeId, animeSlug);
+      }
+      
+      // Pour A Couple of Cuckoos, essayer de récupérer toutes les saisons
+      if (animeSlug.includes('a-couple-of-cuckoos')) {
+        return await this.getCuckooAllSeasons(animeId, animeSlug);
       }
       
       // Navigation normale pour autres animes
@@ -1102,6 +1147,305 @@ export class CrunchyrollToolkitScraper {
       return { 
         success: false, 
         error: `Erreur Fire Force: ${(error as Error).message}` 
+      };
+    }
+  }
+
+  /**
+   * Méthode pour découvrir et extraire toutes les saisons de A Couple of Cuckoos
+   */
+  private async getCuckooAllSeasons(animeId: string, animeSlug: string): Promise<ScraperResult<Episode[]>> {
+    try {
+      console.log('🥚 Extraction A Couple of Cuckoos - Navigation entre toutes les saisons');
+      
+      // A Couple of Cuckoos a une structure avec sélecteur de saisons
+      const mainUrl = 'https://www.crunchyroll.com/fr/series/GXJHM39MP/a-couple-of-cuckoos';
+      await this.browserManager.navigateTo(mainUrl);
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      
+      const driver = await this.browserManager.getDriver();
+      
+      // Chercher les saisons disponibles
+      const seasonsFound = await driver.executeScript(`
+        console.log('🔍 Recherche des saisons pour A Couple of Cuckoos...');
+        
+        let seasonData = {
+          dropdownFound: false,
+          navigationButtons: [],
+          currentSeason: '',
+          availableSeasons: []
+        };
+        
+        // 1. Chercher le dropdown des saisons
+        const seasonDropdown = document.querySelector('div[aria="Saisons"], [class*="season-selector"], [aria-label*="season"]');
+        if (seasonDropdown) {
+          seasonData.dropdownFound = true;
+          console.log('✅ Dropdown saisons trouvé');
+          
+          // Essayer de l'ouvrir pour voir les options
+          try {
+            seasonDropdown.click();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Chercher les options du dropdown
+            const options = document.querySelectorAll('[role="option"], [class*="option"]');
+            options.forEach(option => {
+              const text = option.textContent?.trim() || '';
+              if (text.includes('Saison') || text.includes('Season') || text.match(/S[12]/)) {
+                seasonData.availableSeasons.push({
+                  text: text,
+                  element: 'found'
+                });
+                console.log('🎬 Option saison trouvée: ' + text);
+              }
+            });
+            
+            // Refermer le dropdown
+            seasonDropdown.click();
+            
+          } catch (e) {
+            console.log('⚠️ Erreur ouverture dropdown: ' + e.message);
+          }
+        }
+        
+        // 2. Chercher les boutons de navigation saison
+        const allButtons = document.querySelectorAll('button, [role="button"], [class*="button"]');
+        allButtons.forEach(btn => {
+          const text = btn.textContent?.trim() || '';
+          
+          if (text.includes('Saison suivante') || text.includes('Suivante') || text.includes('Next')) {
+            seasonData.navigationButtons.push({
+              type: 'next',
+              text: text,
+              disabled: btn.hasAttribute('disabled') || btn.classList.contains('disabled')
+            });
+            console.log('🔄 Bouton suivant trouvé: ' + text);
+          }
+          
+          if (text.includes('Saison précédente') || text.includes('Précédente') || text.includes('Previous')) {
+            seasonData.navigationButtons.push({
+              type: 'prev',
+              text: text,
+              disabled: btn.hasAttribute('disabled') || btn.classList.contains('disabled')
+            });
+            console.log('🔄 Bouton précédent trouvé: ' + text);
+          }
+        });
+        
+        // 3. Chercher directement les liens vers les saisons dans l'URL
+        const currentUrl = window.location.href;
+        console.log('📍 URL actuelle: ' + currentUrl);
+        
+        // Vérifier si on peut construire les URLs des saisons
+        const baseSeriesUrl = currentUrl.split('?')[0];
+        console.log('📍 URL de base: ' + baseSeriesUrl);
+        
+        return seasonData;
+      `);
+      
+      console.log('🔍 Données saisons A Couple of Cuckoos:', seasonsFound);
+      
+      const allEpisodes: Episode[] = [];
+      const seasonData = seasonsFound as any;
+      
+      // Stratégie 1: Utiliser le dropdown si disponible
+      if (seasonData.dropdownFound && seasonData.availableSeasons.length > 0) {
+        console.log(`🎬 Navigation via dropdown: ${seasonData.availableSeasons.length} saisons`);
+        
+        for (let i = 0; i < seasonData.availableSeasons.length; i++) {
+          const season = seasonData.availableSeasons[i];
+          const seasonNumber = i + 1;
+          
+          try {
+            console.log(`🎬 Extraction saison ${seasonNumber}: ${season.text}`);
+            
+            // Extraire les épisodes de cette saison
+            const seasonEpisodes = await this.extractAllEpisodesSimple(animeId);
+            
+            // Corriger les numéros de saison
+            const correctedEpisodes = seasonEpisodes.map(ep => ({
+              ...ep,
+              seasonNumber: seasonNumber,
+              id: `${animeId}-s${seasonNumber}ep${ep.episodeNumber}`
+            }));
+            
+            // Éviter les doublons
+            const newEpisodes = correctedEpisodes.filter(newEp => 
+              !allEpisodes.some(existingEp => existingEp.url === newEp.url)
+            );
+            
+            if (newEpisodes.length > 0) {
+              console.log(`✅ Saison ${seasonNumber}: ${newEpisodes.length} épisodes ajoutés`);
+              allEpisodes.push(...newEpisodes);
+            }
+            
+          } catch (error) {
+            console.log(`⚠️ Erreur saison ${seasonNumber}:`, (error as Error).message);
+          }
+        }
+      }
+      
+      // Stratégie 2: Navigation interactive avec les boutons saison si disponibles
+      if (seasonData.navigationButtons.length > 0 && allEpisodes.length < 30) {
+        console.log('🔄 Stratégie boutons de navigation des saisons...');
+        
+        // Extraire d'abord la saison actuelle (saison 1)
+        console.log('📺 Extraction saison 1 (actuelle)...');
+        let seasonEpisodes = await this.extractAllEpisodesSimple(animeId);
+        
+        // Filtrer et corriger pour saison 1
+        const season1Episodes = seasonEpisodes.map(ep => ({
+          ...ep,
+          seasonNumber: 1,
+          id: `${animeId}-s1ep${ep.episodeNumber}`
+        }));
+        
+        allEpisodes.push(...season1Episodes);
+        console.log(`✅ Saison 1: ${season1Episodes.length} épisodes extraits`);
+        
+        // Maintenant essayer de naviguer vers la saison 2 avec les boutons
+        const nextButton = seasonData.navigationButtons.find((btn: any) => btn.type === 'next' && !btn.disabled);
+        
+        if (nextButton) {
+          console.log('🔄 Navigation vers saison 2 via bouton "Suivante"...');
+          
+          const navigated = await driver.executeScript(`
+            console.log('🔍 Recherche du bouton saison suivante...');
+            
+            // Chercher tous les boutons avec texte "suivante" ou "next"
+            const allButtons = document.querySelectorAll('button, [role="button"], [class*="button"]');
+            let foundButton = null;
+            
+            for (const btn of allButtons) {
+              const text = btn.textContent?.trim() || '';
+              console.log('🔍 Bouton trouvé: "' + text + '"');
+              
+              if ((text.includes('Saison suivante') || text.includes('Suivante') || text.includes('Next')) && 
+                  !btn.hasAttribute('disabled') && 
+                  !btn.classList.contains('disabled')) {
+                foundButton = btn;
+                console.log('✅ Bouton valide trouvé: "' + text + '"');
+                break;
+              }
+            }
+            
+            if (foundButton) {
+              try {
+                console.log('🔄 Clic sur le bouton saison suivante...');
+                foundButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                foundButton.focus();
+                foundButton.click();
+                
+                console.log('✅ Clic réussi, attente du chargement...');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                return true;
+              } catch (e) {
+                console.log('❌ Erreur lors du clic: ' + e.message);
+                return false;
+              }
+            } else {
+              console.log('❌ Aucun bouton saison suivante actif trouvé');
+              return false;
+            }
+          `);
+          
+          if (navigated) {
+            console.log('🎬 Navigation réussie, extraction saison 2...');
+            
+            // Attendre le chargement complet
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Extraire les épisodes de la saison 2
+            const season2Episodes = await this.extractAllEpisodesSimple(animeId);
+            
+            // Filtrer pour ne garder que les nouveaux épisodes (saison 2)
+            const newEpisodes = season2Episodes.filter(newEp => 
+              !allEpisodes.some(existingEp => existingEp.url === newEp.url) &&
+              // Exclure les titres de lecture générique
+              !newEp.title.toLowerCase().includes('lecture episode') &&
+              !newEp.title.toLowerCase().includes('lecture e')
+            );
+            
+            if (newEpisodes.length > 0) {
+              // Corriger les numéros de saison
+              const correctedEpisodes = newEpisodes.map(ep => ({
+                ...ep,
+                seasonNumber: 2,
+                id: `${animeId}-s2ep${ep.episodeNumber}`
+              }));
+              
+              allEpisodes.push(...correctedEpisodes);
+              console.log(`✅ Saison 2: ${correctedEpisodes.length} nouveaux épisodes extraits`);
+            } else {
+              console.log('⚠️ Aucun nouvel épisode trouvé pour la saison 2');
+            }
+          }
+        }
+      }
+      
+      // Stratégie 3: Essayer les URLs directes des saisons si pas assez d'épisodes
+      if (allEpisodes.length < 30) {
+        console.log('🔍 Essai URLs directes des saisons...');
+        
+        const seasonUrls = [
+          'https://www.crunchyroll.com/fr/series/GXJHM39MP/a-couple-of-cuckoos',
+          'https://www.crunchyroll.com/fr/series/GXJHM39MP/a-couple-of-cuckoos?season=2',
+          'https://www.crunchyroll.com/fr/series/GXJHM39MP/a-couple-of-cuckoos/season/2'
+        ];
+        
+        for (let i = 0; i < seasonUrls.length; i++) {
+          const url = seasonUrls[i];
+          const seasonNumber = i + 1;
+          
+          try {
+            console.log(`🔄 Navigation vers saison ${seasonNumber}: ${url}`);
+            
+            await this.browserManager.navigateTo(url);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const seasonEpisodes = await this.extractAllEpisodesSimple(animeId);
+            
+            // Éviter les doublons
+            const newEpisodes = seasonEpisodes.filter(newEp => 
+              !allEpisodes.some(existingEp => existingEp.url === newEp.url)
+            );
+            
+            if (newEpisodes.length > 0) {
+              // Corriger les numéros de saison
+              const correctedEpisodes = newEpisodes.map(ep => ({
+                ...ep,
+                seasonNumber: seasonNumber,
+                id: `${animeId}-s${seasonNumber}ep${ep.episodeNumber}`
+              }));
+              
+              allEpisodes.push(...correctedEpisodes);
+              console.log(`✅ Saison ${seasonNumber} (URL directe): ${correctedEpisodes.length} épisodes ajoutés`);
+            }
+            
+          } catch (error) {
+            console.log(`⚠️ Erreur URL saison ${seasonNumber}:`, (error as Error).message);
+          }
+        }
+      }
+      
+      // Fallback: extraction simple si rien ne fonctionne
+      if (allEpisodes.length === 0) {
+        console.log('📺 Fallback: extraction simple saison unique...');
+        await this.extractSeasonEpisodes(driver, animeId, 1, allEpisodes);
+      }
+      
+      console.log(`🥚 A Couple of Cuckoos Total: ${allEpisodes.length} épisodes`);
+      
+      return { success: true, data: allEpisodes };
+      
+    } catch (error) {
+      console.log('❌ Erreur A Couple of Cuckoos multi-saisons:', (error as Error).message);
+      return { 
+        success: false, 
+        error: `Erreur A Couple of Cuckoos: ${(error as Error).message}` 
       };
     }
   }
@@ -1899,8 +2243,12 @@ export class CrunchyrollToolkitScraper {
           title = 'Episode ' + episodeNumber;
         }
         
+        // Utiliser l'ID Crunchyroll depuis l'URL, sinon l'URL complète comme identifiant unique
+        const crunchyrollId = href.split('/watch/')[1]?.split('/')[0];
+        const uniqueId = crunchyrollId || href;
+        
         episodeList.push({
-          id: href.split('/watch/')[1]?.split('/')[0] || arguments[0] + '-s' + seasonNumber + 'ep' + episodeNumber,
+          id: uniqueId,
           animeId: arguments[0],
           title: title,
           episodeNumber: episodeNumber,
@@ -1917,16 +2265,25 @@ export class CrunchyrollToolkitScraper {
       
       console.log('🎬 Total épisodes extraits: ' + episodeList.length);
       
-      // DÉDUPLICATION FINALE : Éliminer les doublons d'URL ET de contenu
+      // DÉDUPLICATION FINALE : Éliminer les doublons par ID, URL ET slug
       const finalEpisodes = [];
+      const seenIds = new Map(); // Clé: ID unique 
       const seenUrls = new Map(); // Clé: URL exacte
       const seenSlugs = new Map(); // Clé: slug d'épisode (pour détecter même contenu, URLs différentes)
       
       episodeList.forEach(episode => {
         const episodeUrl = episode.url;
+        const episodeId = episode.id;
         
         // Extraire le slug de l'épisode (partie après le dernier slash)
         const episodeSlug = episodeUrl.split('/').pop() || '';
+        
+        // Déduplication 0: IDs exactement identiques
+        if (seenIds.has(episodeId)) {
+          const existing = seenIds.get(episodeId);
+          console.log('🔄 Doublon ID éliminé: "' + episode.title + '" (gardé: "' + existing.title + '")');
+          return;
+        }
         
         // Déduplication 1: URLs exactement identiques
         if (seenUrls.has(episodeUrl)) {
@@ -1982,6 +2339,7 @@ export class CrunchyrollToolkitScraper {
         }
         
         // Nouvel épisode unique
+        seenIds.set(episodeId, episode);
         seenUrls.set(episodeUrl, episode);
         if (episodeSlug) {
           seenSlugs.set(episodeSlug, episode);
