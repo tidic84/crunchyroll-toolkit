@@ -4,12 +4,13 @@ An advanced scraper for retrieving anime information from Crunchyroll, designed 
 
 ## 🚀 Features
 
-- **Anime Search**: Search by title with relevant results via intercepted API
-- **Complete Details**: Retrieve metadata (title, description, thumbnail)
-- **Multi-Season**: Automatic detection and extraction of episodes from all seasons
+- **Enhanced Search**: Search by title with improved fallback strategies for hard-to-find anime
+- **Complete Details**: Retrieve metadata (title, description, thumbnail, release year)
+- **Advanced Multi-Season**: Interactive navigation between seasons using Crunchyroll's native controls
+- **Season 2 Support**: Automatic detection of newly released seasons (2025 releases supported)
 - **HD Thumbnails**: High-quality thumbnail retrieval for all episodes
 - **Anti-Detection**: Intelligent bypass of Cloudflare and anti-bot protections
-- **Hybrid API**: Uses intercepted Crunchyroll APIs for precise and complete data
+- **Smart Navigation**: Multiple strategies including dropdown selectors and navigation buttons
 
 ## 📦 Installation
 
@@ -39,34 +40,43 @@ const result = await scraper.searchAnime('Apocalypse Bringer Mynoghra');
 console.log(result.data); // Array of found anime
 ```
 
-### Get anime details
+### Get episodes directly
 
 ```javascript
-const animeUrl = 'https://www.crunchyroll.com/series/...';
-const details = await scraper.getAnimeDetails(animeUrl);
-console.log(details.data); // Complete anime details
+const animeUrl = 'https://www.crunchyroll.com/series/GXJHM39MP/a-couple-of-cuckoos';
+const episodes = await scraper.getEpisodes(animeUrl);
+console.log(episodes.data); // Array of episodes from all seasons
 ```
 
-### Get episodes
+### Complete workflow example
 
 ```javascript
-const episodes = await scraper.getEpisodes(animeUrl);
-console.log(episodes.data); // Array of episodes with thumbnails
+// Search for an anime
+const searchResult = await scraper.searchAnime('A Couple of Cuckoos');
+const anime = searchResult.data[0];
+
+// Get all episodes from all seasons
+const episodes = await scraper.getEpisodes(anime.url);
+console.log(`Found ${episodes.data.length} episodes across multiple seasons`);
+
+// Close the scraper
+await scraper.close();
 ```
 
 ## 🧪 Testing
 
-A complete test is provided for the anime "Apocalypse Bringer Mynoghra":
+A complete test is provided for various anime:
 
 ```bash
-node test-crunchyroll-toolkit.js "Mynoghra"
-```
-
-You can also test with other anime:
-
-```bash
+node test-crunchyroll-toolkit.js "A Couple of Cuckoos"
 node test-crunchyroll-toolkit.js "Fire Force"
 node test-crunchyroll-toolkit.js "One Piece"
+```
+
+You can also test with direct URLs:
+
+```bash
+node test-crunchyroll-toolkit.js "https://www.crunchyroll.com/fr/series/GXJHM39MP/a-couple-of-cuckoos"
 ```
 
 ## 📁 Project Structure
@@ -111,11 +121,12 @@ The scraper uses a hybrid approach that:
 
 ## 🎯 Tested Use Cases
 
+- ✅ **A Couple of Cuckoos**: Complete 2-season extraction (Season 1: 24 episodes, Season 2: 2+ episodes)
 - ✅ **Fire Force**: Search, details, and multi-season extraction (3 seasons detected automatically)
-- ✅ **Mynoghra**: "Apocalypse Bringer Mynoghra" found via specific search
-- ✅ **Multiple Seasons**: Automatic detection and navigation between seasons
+- ✅ **Multiple Seasons**: Advanced navigation between seasons using interactive buttons
+- ✅ **Season 2 Detection**: Automatic detection of newly released seasons (July 2025)
 - ✅ **HD Thumbnails**: 100% of episodes with high-quality thumbnails
-- ✅ **Intercepted APIs**: Complete extraction via real-time Crunchyroll APIs
+- ✅ **Smart Search**: Enhanced search with fallback strategies for hard-to-find anime
 - ✅ **Cloudflare Bypass**: Intelligent navigation and anti-detection
 
 ## 🔧 Technical Details
@@ -126,6 +137,13 @@ The scraper uses a hybrid approach that:
 - **Custom User Agents**: Mimics real browser behavior
 - **Smart Navigation**: Progressive bypass strategies for different protection levels
 - **Stealth Mode**: Disabled automation indicators and enhanced privacy
+
+### Multi-Season Navigation
+
+- **Interactive Buttons**: Uses Crunchyroll's native "Next Season" / "Previous Season" buttons
+- **Dropdown Detection**: Automatic detection of season selector dropdowns
+- **URL Strategies**: Multiple fallback URL patterns for different anime structures
+- **Duplicate Filtering**: Advanced deduplication across seasons and episodes
 
 ### Browser Management
 
