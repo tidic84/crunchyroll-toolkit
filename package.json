@@ -1,6 +1,6 @@
 {
   "name": "crunchyroll-toolkit",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Toolkit Node.js complet pour extraire données d'animés, métadonnées et thumbnails depuis Crunchyroll avec techniques anti-détection 2024/2025",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
