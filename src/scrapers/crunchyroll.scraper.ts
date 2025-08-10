@@ -8,6 +8,7 @@ import {
 } from '../types/anime.types';
 import { BrowserManager } from '../utils/browser.utils';
 import { ParserUtils } from '../utils/parser.utils';
+import { EnhancedScraperManager, EnhancedScraperConfig } from '../utils/enhanced-scraper.utils';
 
 /**
  * Scraper Crunchyroll 2025 - Approche hybride API + Navigation intelligent
@@ -19,6 +20,7 @@ export class CrunchyrollScraper {
   private context?: BrowserContext;
   private apiBaseUrl = 'https://www.crunchyroll.com/content/v2';
   private apiResponses: Map<string, any> = new Map();
+  private enhancedManager: EnhancedScraperManager;
 
   constructor(options: ScraperOptions = {}) {
     const enhancedOptions = {
@@ -29,6 +31,27 @@ export class CrunchyrollScraper {
       ...options
     };
     this.browserManager = new BrowserManager(enhancedOptions);
+    
+    // Configuration Enhanced Scraper optimisée pour Crunchyroll
+    const enhancedConfig: EnhancedScraperConfig = {
+      rateLimit: {
+        initialDelay: 2000,
+        maxDelay: 30000,
+        maxRequestsPerMinute: 15
+      },
+      circuitBreaker: {
+        failureThreshold: 3,
+        recoveryTimeout: 300000
+      },
+      monitoring: {
+        error403Threshold: 2,
+        consecutiveErrorThreshold: 5,
+        successRateThreshold: 70
+      }
+    };
+    
+    this.enhancedManager = new EnhancedScraperManager(enhancedConfig);
+    console.log('🚀 CrunchyrollScraper initialisé avec Enhanced Manager');
   }
 
   /**
@@ -54,8 +77,11 @@ export class CrunchyrollScraper {
     const page = await this.browserManager.getPage();
     this.context = page.context();
     
+    // Initialiser Enhanced Manager avec la page
+    await this.enhancedManager.initializeWithPage(page);
+    
     await this.setupEnhancedMode(page);
-    console.log('🚀 Scraper Enhanced initialisé - Mode API hybride');
+    console.log('🚀 Scraper Enhanced initialisé - Mode API hybride avec protection avancée');
   }
 
   /**
@@ -2682,5 +2708,62 @@ ${htmlContent}`;
 
   async close(): Promise<void> {
     await this.browserManager.close();
+  }
+
+  // Méthodes Enhanced Manager pour monitoring et debugging
+
+  getHealthReport(): string {
+    return this.enhancedManager.getHealthReport();
+  }
+
+  getDetailedStats() {
+    return this.enhancedManager.getDetailedStats();
+  }
+
+  enableCooldownMode(): void {
+    console.log('❄️ Activation du mode cooldown depuis CrunchyrollScraper');
+    this.enhancedManager.enableCooldownMode();
+  }
+
+  disableCooldownMode(): void {
+    console.log('🔥 Désactivation du mode cooldown depuis CrunchyrollScraper');
+    this.enhancedManager.disableCooldownMode();
+  }
+
+  resetEnhancedManager(): void {
+    console.log('🔄 Réinitialisation Enhanced Manager depuis CrunchyrollScraper');
+    this.enhancedManager.resetAll();
+  }
+
+  getRecommendedAction(): string {
+    return this.enhancedManager.getRecommendedAction();
+  }
+
+  async rotateUserAgent(): Promise<void> {
+    const page = await this.browserManager.getPage();
+    await this.enhancedManager.rotateUserAgent(page);
+  }
+
+  async executeWithProtection<T>(
+    endpoint: string,
+    operation: () => Promise<T>,
+    context: {
+      page: Page;
+      query: string;
+      operationType: string;
+    }
+  ): Promise<T> {
+    // Vérifier si on doit arrêter le scraping
+    if (this.enhancedManager.shouldStopScraping()) {
+      throw new Error('Scraping temporairement suspendu par Enhanced Manager');
+    }
+
+    try {
+      return await this.enhancedManager.executeRequest(endpoint, operation, context);
+    } catch (error: any) {
+      // Gestion des erreurs critiques
+      await this.enhancedManager.handleCriticalError(error, context.page);
+      throw error;
+    }
   }
 } 

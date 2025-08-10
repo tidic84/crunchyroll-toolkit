@@ -27,6 +27,7 @@ export interface ScraperOptions {
   maxRetries?: number;
   userAgent?: string;
   locale?: string;
+  debug?: boolean;
 }
 
 export interface ScraperResult<T> {

@@ -17,7 +17,7 @@ async function testCrunchyrollToolkitEpisodes(input = 'Fire Force') {
     
     // Création du scraper Crunchyroll Toolkit (optimisé pour vitesse)
     scraper = await createCrunchyrollToolkitScraper({
-      headless: false,
+      headless: true,
       timeout: 30000
     });
 
