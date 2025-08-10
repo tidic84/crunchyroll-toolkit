@@ -379,18 +379,22 @@ export class CrunchyrollScraper {
         try {
           console.log(`🔍 Test API endpoint: ${endpoint}`);
           const response = await page.evaluate(async (url) => {
-            const resp = await fetch(url, {
-              method: 'GET',
-              headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-              }
-            });
-            return {
-              ok: resp.ok,
-              status: resp.status,
-              data: resp.ok ? await resp.text() : null
+            const delay = (ms: number)=>new Promise<void>(r=>setTimeout(r,ms));
+            await delay(1500 + Math.floor(Math.random()*1000));
+            const headers = {
+              'Accept': 'application/json, text/plain, */*',
+              'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+              'Referer': document.referrer || window.location.href,
+              'Sec-Fetch-Dest': 'empty',
+              'Sec-Fetch-Mode': 'cors',
+              'Sec-Fetch-Site': 'same-origin',
+              'X-Requested-With': 'XMLHttpRequest',
+              'User-Agent': navigator.userAgent
             };
+            const resp = await fetch(url, { method: 'GET', headers });
+            return { ok: resp.ok, status: resp.status, data: resp.ok ? await resp.text() : null };
           }, endpoint);
 
           if (response.ok && response.data) {
@@ -2617,27 +2621,29 @@ export class CrunchyrollScraper {
           'User-Agent': navigator.userAgent
         };
         
-        // Lancer tous les appels en parallèle
-        endpoints.forEach((endpoint, index) => {
-          setTimeout(() => {
-            fetch(endpoint, {
-              method: 'GET',
-              credentials: 'include',
-              headers: headers
-            }).then(response => {
-              console.log(`🎯 API forcée [${index + 1}/${endpoints.length}] ${endpoint}: Status ${response.status}`);
+        // Throttling: appels séquentiels avec délai réaliste et jitter
+        (async () => {
+          for (let i = 0; i < endpoints.length; i++) {
+            const endpoint = endpoints[i];
+            await new Promise(r => setTimeout(r, 1500 + Math.floor(Math.random()*1000)));
+            try {
+              const response = await fetch(endpoint, {
+                method: 'GET',
+                credentials: 'include',
+                headers
+              });
+              console.log(`🎯 API forcée [${i + 1}/${endpoints.length}] ${endpoint}: Status ${response.status}`);
               if (response.ok) {
-                return response.json();
+                const data = await response.json();
+                if (data) {
+                  console.log(`📦 Données reçues pour ${endpoint}:`, Object.keys(data));
+                }
               }
-            }).then(data => {
-              if (data) {
-                console.log(`📦 Données reçues pour ${endpoint}:`, Object.keys(data));
-              }
-            }).catch(error => {
-              console.log(`❌ Erreur API ${endpoint}:`, error.message);
-            });
-          }, index * 200); // Étalement des appels
-        });
+            } catch (error:any) {
+              console.log(`❌ Erreur API ${endpoint}:`, error?.message || error);
+            }
+          }
+        })();
         
       }, query);
       

@@ -28,6 +28,19 @@ export interface ScraperOptions {
   userAgent?: string;
   locale?: string;
   debug?: boolean;
+  rateLimit?: {
+    maxRequestsPerMinute?: number;
+    initialDelayMs?: number;
+    maxDelayMs?: number;
+  };
+  cooldown?: {
+    failureThreshold?: number;
+    recoveryTimeoutMs?: number;
+    successThreshold?: number;
+  };
+  preferHtmlDiscover?: boolean;
+  cacheDir?: string;
+  userDataDir?: string;
 }
 
 export interface ScraperResult<T> {

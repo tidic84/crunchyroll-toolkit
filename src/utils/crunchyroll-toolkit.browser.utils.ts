@@ -36,7 +36,8 @@ export class CrunchyrollToolkitBrowserManager {
             '--disable-blink-features=AutomationControlled',
             '--exclude-switches=enable-automation',
             '--window-size=1366,768'
-          ]
+          ],
+          userDataDir: this.options.userDataDir
         });
         
         console.log('🎯 Création du driver avec undetected-chromedriver-js...');
