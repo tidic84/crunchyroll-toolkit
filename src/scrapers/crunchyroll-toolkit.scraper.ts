@@ -54,13 +54,13 @@ export class CrunchyrollToolkitScraper {
     try {
       const searchUrl = `${this.baseUrl}/fr/search?q=${encodeURIComponent(query)}`;
       
-      console.log(`🔍 Recherche Crunchyroll Toolkit: "${query}"`);
+      this.log(`🔍 Recherche Crunchyroll Toolkit: "${query}"`);
       
       // Navigation intelligente
       const navigationSuccess = await this.smartNavigation(searchUrl);
       
       if (!navigationSuccess) {
-        console.log('⚠️ Navigation échouée, essai méthode alternative...');
+        this.log('⚠️ Navigation échouée, essai méthode alternative...');
         return await this.searchAnimeAlternative(query);
       }
 
@@ -72,9 +72,9 @@ export class CrunchyrollToolkitScraper {
       // Extraction DOM directe (avec scroll sur page de recherche)
       let animes = await this.extractAnimesFromSearchPage(query);
       const rawResults = [...animes];
-      console.log(`🔍 Debug résultats bruts: ${rawResults.length}`);
-      rawResults.slice(0, 10).forEach((r: any, i: number) => {
-        console.log(`  [${i+1}] ${r.title} -> ${r.url} slug:${r.slug||''} y:${typeof r.y==='number'?r.y:''}`);
+      this.log(`🔍 Debug résultats bruts: ${rawResults.length}`);
+      if (this.debug) rawResults.slice(0, 10).forEach((r: any, i: number) => {
+        this.log(`  [${i+1}] ${r.title} -> ${r.url} slug:${r.slug||''} y:${typeof r.y==='number'?r.y:''}`);
       });
 
       // Filtrer pour garder seulement les vraies séries d'animation
@@ -135,19 +135,19 @@ export class CrunchyrollToolkitScraper {
 
       // Vérifier si on a de vrais résultats pertinents (après tri affiné)
       const bestRelevance = animes.length > 0 ? this.calculateRelevance(animes[0].title, query) : 0;
-      console.log('🔍 Candidats triés (top 10):');
-      animes.slice(0, 10).forEach((r: any, i: number) => {
+      this.log('🔍 Candidats triés (top 10):');
+      if (this.debug) animes.slice(0, 10).forEach((r: any, i: number) => {
         const rel = this.calculateRelevance(r.title, query).toFixed(2);
         const slugSrc = normalize((r.slug || r.url || ''));
         const slugScore = sigTokens.reduce((acc, w) => acc + (slugSrc.includes(w) ? 1 : 0), 0);
-        console.log(`  [${i+1}] ${r.title} (rel:${rel}, slugScore:${slugScore}) -> ${r.url}`);
+        this.log(`  [${i+1}] ${r.title} (rel:${rel}, slugScore:${slugScore}) -> ${r.url}`);
       });
       
       console.log(`🎯 Résultats filtrés: ${animes.length} série(s), meilleure pertinence: ${bestRelevance.toFixed(2)}`);
       
       // Si la pertinence est basse (< 0.8), tenter une recherche en anglais
       if (bestRelevance < 0.8) {
-        console.log('🌐 Pertinence basse, tentative en locale EN...');
+        this.log('🌐 Pertinence basse, tentative en locale EN...');
         const localesTry = ['en'];
         let bestAltList: Anime[] = [];
         let bestAltScore = 0;
@@ -162,7 +162,7 @@ export class CrunchyrollToolkitScraper {
           }
         }
         if (bestAltScore > bestRelevance) {
-          console.log(`✅ Locale EN plus pertinente: ${bestAltScore.toFixed(2)} > ${bestRelevance.toFixed(2)} (remplacement des résultats)`);
+          this.log(`✅ Locale EN plus pertinente: ${bestAltScore.toFixed(2)} > ${bestRelevance.toFixed(2)} (remplacement des résultats)`);
           animes = bestAltList;
         }
       }
@@ -171,7 +171,7 @@ export class CrunchyrollToolkitScraper {
       if (animes.length === 0 && rawResults.length > 0) {
         const watchLinks = rawResults.filter(r => r.url && r.url.includes('/watch/')).slice(0, 5);
         if (watchLinks.length > 0) {
-          console.log(`🔄 Aucun /series/ direct. Tentative depuis ${watchLinks.length} lien(s) /watch/...`);
+          this.log(`🔄 Aucun /series/ direct. Tentative depuis ${watchLinks.length} lien(s) /watch/...`);
           const resolved = await this.resolveSeriesFromWatchLinks(watchLinks.map(r => r.url));
           if (resolved.length > 0) {
             animes = resolved;
@@ -529,7 +529,7 @@ export class CrunchyrollToolkitScraper {
    * Extraction ciblée depuis la page de recherche (fallback)
    */
   private async extractAnimesFromSearchPage(query: string): Promise<any[]> {
-    console.log('📄 Extraction DOM depuis page de recherche...');
+    this.log('📄 Extraction DOM depuis page de recherche...');
     
     const driver = await this.browserManager.getDriver();
     // Échapper correctement la query pour éviter les erreurs JavaScript
@@ -545,7 +545,11 @@ export class CrunchyrollToolkitScraper {
       await new Promise(r => setTimeout(r, 1200));
     } catch {}
     
-    return await driver.executeScript(`
+    // Désactiver temporairement les logs console de la page si debug OFF
+    if (!this.debug) {
+      try { await driver.executeScript('window.__savedLog = console.log; console.log = function(){};'); } catch {}
+    }
+    const results = await driver.executeScript(`
       const results = [];
       
       console.log('🔍 Recherche de tous les types de liens sur la page pour: ${escapedQuery}');
@@ -663,7 +667,7 @@ export class CrunchyrollToolkitScraper {
                 id: animeId || href.split('/').pop(),
                 title: cleanTitle,
                 url: href,
-                 thumbnail: undefined,
+                thumbnail: undefined,
                  type: href.includes('/series/') ? 'series' : 'episode',
                  slug: slug,
                  rank: index,
@@ -755,6 +759,10 @@ export class CrunchyrollToolkitScraper {
       
       return results;
     `, query);
+    if (!this.debug) {
+      try { await driver.executeScript('if (window.__savedLog) console.log = window.__savedLog;'); } catch {}
+    }
+    return results as any[];
   }
 
   // Accepter des cookies si bannière présente
